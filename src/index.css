@@ -1,0 +1,127 @@
+@import url('https://fonts.googleapis.com/css2?family=lora:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600;1,700&family=manrope:wght@400;600;700;800&family=noto+sans+kr:wght@300;400;500;700&family=outfit:wght@300;400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-gradient-start: #f8fafc;
+  --bg-gradient-end: #fff1f2;
+  --glass-bg: #ffffff;
+  --glass-border: #e2e8f0;
+  --glass-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --text-primary: #1e293b;
+  --text-secondary: #64748b;
+  --accent-color: #8b5cf6;
+}
+
+body {
+	font-family: 'Outfit', 'Inter', -apple-system, sans-serif;
+	background-color: #f8fafc;
+	color: var(--text-primary);
+    min-height: 100vh;
+    background-attachment: fixed;
+    overflow-x: hidden;
+}
+
+/* Dark Mode Transition */
+html.dark body {
+    background-color: #09090b;
+    color: #e4e4e7;
+}
+
+/* Background Animation - Disabled for flat look */
+/* 
+@keyframes gradient-xy { ... }
+body::before { ... }
+*/
+
+/* Flat Design Utilities (Terrain Metaphor) */
+.glass-panel {
+    background: var(--glass-bg);
+    /* Removed border and radius for seamless terrain look */
+    border: none;
+    box-shadow: none; /* Rely on color difference or gradient */
+    border-radius: 0; 
+}
+
+/* View Transition API Animations */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+.glass-button {
+    background: #f1f5f9;
+    border: none;
+    border-radius: 0;
+    transition: all 0.2s ease-in-out;
+}
+
+.glass-button:hover {
+    background: var(--accent-color);
+    color: white;
+    box-shadow: none; /* No shadow, just color change */
+    transform: none; /* No Lift */
+}
+
+.glass-button:active {
+    transform: scale(0.98);
+}
+
+/* Typography Overrides */
+h1, h2, h3, h4, h5, h6 {
+    font-family: 'Outfit', sans-serif;
+    color: var(--text-primary);
+}
+
+.font-korean {
+    font-family: 'Noto Sans KR', sans-serif;
+}
+
+.font-serif-example {
+    font-family: 'Lora', serif;
+}
+
+/* Spotify-like scrollbar */
+::-webkit-scrollbar {
+	width: 12px;
+	height: 12px;
+}
+
+::-webkit-scrollbar-track {
+	background: transparent;
+	border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+	background: rgba(0,0,0,0.1);
+	border-radius: 10px;
+	border: 2px solid transparent;
+    background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+	background: rgba(0,0,0,0.2);
+    border: 2px solid transparent;
+    background-clip: content-box;
+}
+
+/* 3D Flip Utilities */
+.perspective-1000 {
+  perspective: 1000px;
+}
+
+.transform-style-3d {
+  transform-style: preserve-3d;
+}
+
+.backface-hidden {
+  backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+}
+
+.rotate-y-180 {
+  transform: rotateY(180deg);
+}
