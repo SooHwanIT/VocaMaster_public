@@ -8,7 +8,7 @@ export interface StudyRecord {
   id?: number; // Auto-increment ID
   wordId: string;
   dataSetId: string; // day1, day2...
-  mode: 'CHOICE' | 'WRITE';
+  mode: 'CHOICE' | 'WRITE' | 'TEST';
   correctCnt: number;
   wrongCnt: number;
   memoryScore: number; // -3 to 3, mastery when >= 3
@@ -29,7 +29,7 @@ export interface Bookmark {
 export interface StudySession {
   id?: number;
   dataSetId: string;
-  mode: 'CHOICE' | 'WRITE';
+  mode: 'CHOICE' | 'WRITE' | 'TEST';
   startTime: number;
   endTime: number;
   totalCount: number;

@@ -1,8 +1,8 @@
 import type { WordWithStats } from '../db';
 
 export type ViewState = 'DASHBOARD' | 'QUIZ' | 'RESULT' | 'WORD_STUDY_MAIN';
-export type AppMode = 'WORD_LIST' | 'CHOICE' | 'WRITE' | 'PROGRESS' | 'TODAY' | 'PROFILE' | 'DASHBOARD_MAIN';
-export type QuizMode = 'CHOICE' | 'WRITE';
+export type AppMode = 'WORD_LIST' | 'CHOICE' | 'WRITE' | 'PROGRESS' | 'TODAY' | 'PROFILE' | 'DASHBOARD_MAIN' | 'TEST';
+export type QuizMode = 'CHOICE' | 'WRITE' | 'TEST';
 
 export type AppTheme = 'light' | 'dark';
 

@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Book, BookOpen, Home, Keyboard, Library, Minus, Square, Trophy, X, User as UserIcon, BarChart, Bookmark, Settings, History, Gamepad2 } from 'lucide-react';
+import { Book, BookOpen, Home, Keyboard, Library, Minus, Square, Trophy, X, User as UserIcon, BarChart, Bookmark, Settings, History, Gamepad2, FileCheck } from 'lucide-react';
 import { ipcRenderer } from 'electron';
 
-import { getModeProgress, saveStudySession } from './db';
+import { saveStudySession } from './db';
 import { DATA_SETS } from './data';
 import { STORAGE_KEY } from './app/constants';
 import { appReducer, getInitialState } from './app/state';
@@ -22,6 +22,7 @@ import TodayStudyView from './components/TodayStudyView';
 import QuizSessionManager from './components/QuizSessionManager';
 import ChoiceQuizUI from './components/ChoiceQuizUI';
 import WriteQuizUI from './components/WriteQuizUI';
+import TestSessionManager from './components/TestSessionManager';
 import ResultView from './components/ResultView';
 import ArcadeView from './components/ArcadeView';
 
@@ -133,14 +134,15 @@ const App = () => {
             if (e.key === '1') handleStartDayMode('WORD_LIST');
             if (e.key === '2') handleStartDayMode('CHOICE');
             if (e.key === '3') handleStartDayMode('WRITE');
-            if (e.key === '4') handleStartDayMode('PROGRESS');
+            if (e.key === '4') handleStartDayMode('TEST');
+            if (e.key === '5') handleStartDayMode('PROGRESS');
         };
         window.addEventListener('keydown', handleKey);
         return () => window.removeEventListener('keydown', handleKey);
     }, [modePickerDayId, handleStartDayMode, closeModePicker]);
 
     const handleQuizFinish = (stats: SessionStats) => {
-        if (state.dayId && (state.mode === 'CHOICE' || state.mode === 'WRITE')) {
+        if (state.dayId && (state.mode === 'CHOICE' || state.mode === 'WRITE' || state.mode === 'TEST')) {
             saveStudySession({
                 dataSetId: state.dayId,
                 mode: state.mode,
@@ -150,6 +152,16 @@ const App = () => {
                 correctCount: stats.totalTries - (stats.wrongAttempts || 0),
                 wrongCount: stats.wrongAttempts || 0 // Use field from stats
             });
+            
+            // 시험 모드일 경우 최고 점수 갱신
+            if (state.mode === 'TEST') {
+                const currentScore = Math.round(((stats.totalTries - (stats.wrongAttempts || 0)) / stats.totalWordCount) * 100);
+                const key = `best_score_test_${state.dayId}`;
+                const bestScore = parseInt(localStorage.getItem(key) || '0', 10);
+                if (currentScore > bestScore) {
+                    localStorage.setItem(key, currentScore.toString());
+                }
+            }
         }
         dispatch({ type: 'QUIZ_FINISH', stats });
     };
@@ -402,6 +414,14 @@ const App = () => {
                             />
                         )}
 
+                        {state.view === 'QUIZ' && state.dayId && state.mode === 'TEST' && (
+                            <TestSessionManager
+                                dataSetId={state.dayId}
+                                onFinish={handleQuizFinish}
+                                onQuit={handleDashboard}
+                            />
+                        )}
+
                         {state.view === 'RESULT' && state.lastStats && (
                             <ResultView stats={state.lastStats} onRetry={() => dispatch({ type: 'RETRY_QUIZ' })} onDashboard={handleDashboard} />
                         )}
@@ -454,8 +474,26 @@ const App = () => {
                                 <p className="text-sm text-text-secondary dark:text-zinc-400">예문 듣고 빈칸 채우기</p>
                             </button>
 
-                            <button onClick={() => handleStartDayMode('PROGRESS')} className="group text-left p-6 rounded-2xl bg-slate-50 dark:bg-zinc-800/50 border border-slate-100 dark:border-zinc-700 hover:border-accent dark:hover:border-accent hover:bg-white dark:hover:bg-zinc-800 transition-all relative overflow-hidden">
+                            <button onClick={() => handleStartDayMode('TEST')} className="group text-left p-6 rounded-2xl bg-slate-50 dark:bg-zinc-800/50 border border-slate-100 dark:border-zinc-700 hover:border-red-500 dark:hover:border-red-500 hover:bg-white dark:hover:bg-zinc-800 transition-all relative overflow-hidden">
                                 <div className="absolute top-4 right-4 text-xs font-bold text-text-secondary dark:text-zinc-500 border border-slate-200 dark:border-zinc-700 px-2 py-1 rounded-md bg-white dark:bg-zinc-900">4</div>
+                                <div className="w-12 h-12 rounded-xl bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform shadow-sm">
+                                    <FileCheck size={24} />
+                                </div>
+                                <div className="flex justify-between items-end">
+                                    <div>
+                                        <h3 className="text-xl font-bold text-text-primary dark:text-white mb-1">실전 모의고사</h3>
+                                        <p className="text-sm text-text-secondary dark:text-zinc-400">즉시 채점 없는 실전 테스트</p>
+                                    </div>
+                                    {localStorage.getItem(`best_score_test_${modePickerDayId}`) && (
+                                        <div className="text-xs font-bold text-amber-500 bg-amber-50 dark:bg-amber-900/30 px-2 py-1 rounded border border-amber-100 dark:border-amber-800">
+                                            Best: {localStorage.getItem(`best_score_test_${modePickerDayId}`)}점
+                                        </div>
+                                    )}
+                                </div>
+                            </button>
+
+                            <button onClick={() => handleStartDayMode('PROGRESS')} className="group text-left p-6 rounded-2xl bg-slate-50 dark:bg-zinc-800/50 border border-slate-100 dark:border-zinc-700 hover:border-accent dark:hover:border-accent hover:bg-white dark:hover:bg-zinc-800 transition-all relative overflow-hidden md:col-span-2">
+                                <div className="absolute top-4 right-4 text-xs font-bold text-text-secondary dark:text-zinc-500 border border-slate-200 dark:border-zinc-700 px-2 py-1 rounded-md bg-white dark:bg-zinc-900">5</div>
                                 <div className="w-12 h-12 rounded-xl bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform shadow-sm">
                                     <Trophy size={24} />
                                 </div>

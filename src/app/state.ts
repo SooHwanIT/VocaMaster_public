@@ -39,7 +39,7 @@ export const getInitialState = (): AppState => {
         const theme = parsed?.theme === 'dark' ? 'dark' : 'light';
 
         const isValidView = view === 'DASHBOARD' || view === 'QUIZ' || view === 'RESULT';
-        const isValidMode = mode === 'WORD_LIST' || mode === 'CHOICE' || mode === 'WRITE' || mode === 'PROGRESS' || mode === 'TODAY' || mode === 'PROFILE';
+        const isValidMode = mode === 'WORD_LIST' || mode === 'CHOICE' || mode === 'WRITE' || mode === 'PROGRESS' || mode === 'TODAY' || mode === 'PROFILE' || mode === 'TEST';
         const isValidStats = lastStats &&
             typeof lastStats.totalTries === 'number' &&
             typeof lastStats.mostWrong === 'string' &&
@@ -77,7 +77,7 @@ export const appReducer = (state: AppState, action: AppAction): AppState => {
             return normalizeState(next);
         }
         case 'START_DAY_MODE': {
-            const nextView = action.mode === 'CHOICE' || action.mode === 'WRITE' ? 'QUIZ' : 'DASHBOARD';
+            const nextView = action.mode === 'CHOICE' || action.mode === 'WRITE' || action.mode === 'TEST' ? 'QUIZ' : 'DASHBOARD';
             return normalizeState({
                 ...state,
                 mode: action.mode,
@@ -87,7 +87,7 @@ export const appReducer = (state: AppState, action: AppAction): AppState => {
             });
         }
         case 'SELECT_DAY': {
-            const nextView = state.mode === 'CHOICE' || state.mode === 'WRITE' ? 'QUIZ' : 'DASHBOARD';
+            const nextView = state.mode === 'CHOICE' || state.mode === 'WRITE' || state.mode === 'TEST' ? 'QUIZ' : 'DASHBOARD';
             return normalizeState({
                 ...state,
                 dayId: action.dayId,
