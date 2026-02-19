@@ -62,9 +62,9 @@ const DashboardView = () => {
         : 0;
 
     return (
-        <div className="flex flex-col h-full w-full p-8 overflow-y-auto bg-slate-50 dark:bg-[#09090b] transition-colors duration-300">
-            <div className="mb-12">
-                <h2 className="text-4xl font-extrabold text-text-primary dark:text-white tracking-tight font-sans mb-2 transition-colors">{greeting}</h2>
+        <div className="flex flex-col h-full w-full p-4 md:p-8 overflow-y-auto bg-slate-50 dark:bg-[#09090b] transition-colors duration-300">
+            <div className="mb-8 md:mb-12">
+                <h2 className="text-3xl md:text-4xl font-extrabold text-text-primary dark:text-white tracking-tight font-sans mb-2 transition-colors">{greeting}</h2>
                 <p className="text-text-secondary dark:text-zinc-400">오늘도 영어 실력을 향상시켜보세요.</p>
             </div>
 

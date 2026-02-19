@@ -201,7 +201,7 @@ const ArcadeView = () => {
     // Menu Screen
     if (activeGame === 'NONE') {
         return (
-            <div className="flex flex-col h-full bg-slate-50 dark:bg-zinc-950 p-8 overflow-y-auto">
+            <div className="flex flex-col h-full bg-slate-50 dark:bg-zinc-950 p-4 md:p-8 overflow-y-auto">
                 <div className="pb-8">
                     <h1 className="text-3xl font-black text-slate-800 dark:text-white tracking-tight mb-2 flex items-center gap-3">
                         <span className="bg-purple-500 text-white p-2 rounded-lg"><Grid size={24} /></span>

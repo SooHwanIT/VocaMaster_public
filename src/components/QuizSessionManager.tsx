@@ -168,11 +168,14 @@ const QuizSessionManager = ({
         : 0;
     const masterPercent = (totalMastered / totalWordCount) * 100;
 
-    const handleSaveExit = () => {
+    const handleSuspend = () => {
+        // 중단하기 (저장 후 종료)
+        // 1. 현재 상태 저장 (Resume)
         const snapshot: QuizSessionSnapshot = {
             dataSetId,
             mode,
-            queue: queue.map(item => ({ id: item.id, sessionStatus: item.sessionStatus })),
+            // 큐 상태 저장: 현재 진행중인 단어 포함
+            queue: (current ? [current, ...queue] : queue).map(item => ({ id: item.id, sessionStatus: item.sessionStatus })),
             sessionTries,
             sessionWrongs,
             masteredCount,
@@ -181,15 +184,31 @@ const QuizSessionManager = ({
         };
         saveQuizSession(snapshot);
         saveResumeState({ mode, dayId: dataSetId, savedAt: Date.now() });
-        setShowExitConfirm(false);
-        onQuit();
-    };
 
-    const handleDiscardExit = () => {
-        clearQuizSession(dataSetId, mode);
-        clearResumeState();
+        // 2. 학습 기록 저장 (History) - 부분 결과라도 저장
+        let maxWrong = 0;
+        let worstWord = '없음';
+        let totalWrongs = 0;
+        Object.entries(sessionWrongs).forEach(([word, cnt]) => {
+            if (cnt > maxWrong) { maxWrong = cnt; worstWord = `${word} (${cnt})`; }
+            totalWrongs += cnt;
+        });
+
+        // 현재까지의 오답 목록 수집
+        const wrongWordsList = Object.keys(sessionWrongs);
+
+        onFinish({
+            totalTries: sessionTries, 
+            mostWrong: worstWord, 
+            masteredCount: newMasteredInSession,
+            startTime: startTimeRef.current,
+            endTime: Date.now(),
+            totalWordCount: totalWordCount, // 전체 단어 수 (진행률 계산용)
+            wrongAttempts: totalWrongs,
+            wrongWords: wrongWordsList
+        });
+        // onFinish가 Result화면을 보여주므로 onQuit는 호출하지 않음 (ResultView에서 홈으로 이동)
         setShowExitConfirm(false);
-        onQuit();
     };
 
     return (
@@ -208,15 +227,26 @@ const QuizSessionManager = ({
             })}
 
             {showExitConfirm && (
-                <div className="absolute inset-0 z-40 bg-black/70 flex items-center justify-center transition-colors">
-                    <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-2xl w-full max-w-lg p-6 shadow-xl transition-colors">
-                        <h3 className="text-xl font-bold text-zinc-900 dark:text-white mb-3 transition-colors">학습을 종료할까요?</h3>
-                        <p className="text-zinc-600 dark:text-zinc-400 text-sm mb-6 transition-colors">저장하면 다음 학습에서 이어할 수 있습니다.</p>
-                        <div className="flex justify-end gap-3">
-                            <button onClick={() => setShowExitConfirm(false)} className="px-4 py-2 text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white transition-colors">취소</button>
-                            <button onClick={handleDiscardExit} className="px-4 py-2 border border-slate-300 dark:border-zinc-700 rounded-full text-zinc-800 dark:text-white hover:border-slate-400 dark:hover:border-zinc-500 transition-colors">저장 안 함</button>
-                            <button onClick={handleSaveExit} className="px-4 py-2 bg-[#1db954] hover:bg-[#1ed760] text-white rounded-full font-bold transition-all shadow-lg hover:shadow-[#1db954]/20 hover:scale-105">
-                                저장하고 종료
+                <div className="absolute inset-0 z-40 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+                    <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-3xl w-full max-w-md p-8 shadow-2xl scale-100 animate-in zoom-in-95 duration-200">
+                        <h3 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">학습을 중단할까요?</h3>
+                        <p className="text-slate-500 dark:text-zinc-400 mb-8 leading-relaxed">
+                            현재까지의 학습 내용을 저장합니다.<br/>
+                            작성한 오답 노트와 통계가 기록되며,<br/>
+                            나중에 이어서 계속할 수 있습니다.
+                        </p>
+                        <div className="flex flex-col gap-3">
+                            <button 
+                                onClick={handleSuspend} 
+                                className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-lg shadow-lg hover:shadow-blue-500/20 transition-all hover:-translate-y-0.5"
+                            >
+                                중단하고 결과 보기
+                            </button>
+                            <button 
+                                onClick={() => setShowExitConfirm(false)} 
+                                className="w-full py-3 text-slate-500 hover:text-slate-900 dark:text-zinc-400 dark:hover:text-white font-medium transition-colors"
+                            >
+                                계속 학습하기
                             </button>
                         </div>
                     </div>

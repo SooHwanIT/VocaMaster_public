@@ -303,7 +303,7 @@ const SettingsView = ({ theme, onThemeChange }: { theme: AppTheme; onThemeChange
 
     return (
         <div className="flex flex-col h-full bg-slate-50 dark:bg-zinc-950 overflow-y-auto w-full">
-             <div className="p-8 pb-4 shrink-0 w-full max-w-5xl mx-auto">
+             <div className="p-4 md:p-8 pb-4 shrink-0 w-full max-w-5xl mx-auto">
                 <h1 className="text-3xl font-black text-slate-800 dark:text-white tracking-tight mb-2 flex items-center gap-3">
                     <Settings2 className="text-gray-500" size={32} />
                     설정
@@ -313,7 +313,7 @@ const SettingsView = ({ theme, onThemeChange }: { theme: AppTheme; onThemeChange
                 </p>
             </div>
 
-            <div className="flex-1 p-8 pt-0 space-y-8 pb-20 w-full max-w-5xl mx-auto">
+            <div className="flex-1 p-4 md:p-8 pt-0 space-y-8 pb-20 w-full max-w-5xl mx-auto">
                 {/* 1. Appearance */}
                 <section>
                     <h2 className="text-sm font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-wider mb-4 px-2">

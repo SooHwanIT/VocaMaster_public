@@ -4,7 +4,7 @@ import type { Word } from '../data/types';
 
 interface TestModeUIProps {
     words: Word[];
-    onComplete: (results: { wordId: string; isCorrect: boolean }[]) => void;
+    onComplete: (results: { wordId: string; isCorrect: boolean }[], direction: 'EN_TO_KR' | 'KR_TO_EN') => void;
     onQuit: () => void;
 }
 
@@ -146,7 +146,7 @@ const TestModeUI: React.FC<TestModeUIProps> = ({ words, onComplete, onQuit }) =>
         // 다만 App.tsx의 handleQuizFinish에서 "Test Mode"일 경우 점수를 로컬스토리지에 저장하는 로직을 추가해야 함.
         // 지금은 우선 UI 구현에 집중.
 
-        onComplete(results);
+        onComplete(results, direction);
     };
 
     // 설정 화면 (Step 1)
@@ -172,8 +172,9 @@ const TestModeUI: React.FC<TestModeUIProps> = ({ words, onComplete, onQuit }) =>
                         >
                             <span className="block text-xs font-bold text-accent mb-1 tracking-wider">TYPE 1</span>
                             <span className="text-lg font-bold text-text-primary dark:text-white group-hover:text-accent transition-colors">
-                                영어 단어 보고 &rarr; 한글 뜻 쓰기
+                                영어 단어장 (1단계 Test)
                             </span>
+                            <div className="text-sm text-slate-400 mt-2">영어 단어 &rarr; 한글 뜻 맞추기</div>
                         </button>
                         <button
                             onClick={() => { setDirection('KR_TO_EN'); setStep('TEST'); }}
@@ -181,8 +182,9 @@ const TestModeUI: React.FC<TestModeUIProps> = ({ words, onComplete, onQuit }) =>
                         >
                             <span className="block text-xs font-bold text-accent mb-1 tracking-wider">TYPE 2</span>
                             <span className="text-lg font-bold text-text-primary dark:text-white group-hover:text-accent transition-colors">
-                                한글 뜻 보고 &rarr; 영어 스펠링 쓰기
+                                영어 철자 쓰기 (2단계 Test)
                             </span>
+                            <div className="text-sm text-slate-400 mt-2">한글 뜻 &rarr; 영어 철자 맞추기</div>
                         </button>
                     </div>
 

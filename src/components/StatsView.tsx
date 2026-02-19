@@ -89,7 +89,7 @@ const StatsView = () => {
 
     return (
         <div className="flex flex-col h-full bg-slate-50 dark:bg-zinc-950 overflow-y-auto">
-             <div className="p-8 pb-4 shrink-0">
+             <div className="p-4 md:p-8 pb-4 shrink-0">
                 <h1 className="text-3xl font-black text-slate-800 dark:text-white tracking-tight mb-2 flex items-center gap-3">
                     <BarChart className="text-orange-500" size={32} />
                     학습 통계

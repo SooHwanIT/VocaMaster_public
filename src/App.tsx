@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Book, BookOpen, Home, Keyboard, Library, Minus, Square, Trophy, X, User as UserIcon, BarChart, Bookmark, Settings, History, Gamepad2, FileCheck } from 'lucide-react';
+import { Book, BookOpen, Home, Keyboard, Library, Minus, Square, Trophy, X, User as UserIcon, BarChart, Bookmark, Settings, History, Gamepad2, FileCheck, Menu, Play } from 'lucide-react';
 import { ipcRenderer } from 'electron';
 
 import { saveStudySession } from './db';
@@ -25,6 +25,7 @@ import WriteQuizUI from './components/WriteQuizUI';
 import TestSessionManager from './components/TestSessionManager';
 import ResultView from './components/ResultView';
 import ArcadeView from './components/ArcadeView';
+import PlayerView from './components/PlayerView';
 
 const App = () => {
     const [state, dispatch] = React.useReducer(appReducer, undefined, getInitialState);
@@ -53,6 +54,11 @@ const App = () => {
     // Let's modify the view rendering logic below.
 
     const [activeTab, setActiveTab] = useState<'DASHBOARD' | 'WORD_STUDY' | 'BOOKMARKS' | 'STATS' | 'ARCADE' | 'HISTORY' | 'SETTINGS' | 'PROFILE'>('DASHBOARD');
+    const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+    useEffect(() => {
+        setIsMobileMenuOpen(false);
+    }, [activeTab]);
 
     useEffect(() => {
         if (typeof window === 'undefined') return;
@@ -136,6 +142,7 @@ const App = () => {
             if (e.key === '3') handleStartDayMode('WRITE');
             if (e.key === '4') handleStartDayMode('TEST');
             if (e.key === '5') handleStartDayMode('PROGRESS');
+            if (e.key === '6') handleStartDayMode('PLAYER');
         };
         window.addEventListener('keydown', handleKey);
         return () => window.removeEventListener('keydown', handleKey);
@@ -150,7 +157,8 @@ const App = () => {
                 endTime: stats.endTime,
                 totalCount: stats.totalWordCount,
                 correctCount: stats.totalTries - (stats.wrongAttempts || 0),
-                wrongCount: stats.wrongAttempts || 0 // Use field from stats
+                wrongCount: stats.wrongAttempts || 0, // Use field from stats
+                wrongWords: stats.wrongWords // 상세 오답 기록 저장
             });
             
             // 시험 모드일 경우 최고 점수 갱신
@@ -169,6 +177,40 @@ const App = () => {
     const handleDashboard = () => {
         dispatch({ type: 'BACK_DASHBOARD' });
     };
+
+    const navItems = [
+        { id: 'DASHBOARD', icon: Home, label: '대시보드', color: 'text-accent' },
+        { id: 'WORD_STUDY', icon: Book, label: '단어학습', color: 'text-blue-500' },
+        { id: 'BOOKMARKS', icon: Bookmark, label: '나만의 단어장', color: 'text-emerald-500' },
+        { id: 'STATS', icon: BarChart, label: '통계', color: 'text-orange-500' },
+        { id: 'ARCADE', icon: Gamepad2, label: '아케이드', color: 'text-purple-500' },
+        { id: 'HISTORY', icon: History, label: '학습 기록', color: 'text-blue-500' },
+        { id: 'SETTINGS', icon: Settings, label: '설정', color: 'text-gray-500' },
+        { id: 'PROFILE', icon: UserIcon, label: '프로필', color: 'text-purple-500' },
+    ];
+
+    const renderNav = (isMobile = false) => (
+        <nav className={`flex-1 overflow-y-auto w-full space-y-2 ${isMobile ? 'px-3' : 'px-2 md:px-3'}`}>
+            {navItems.map((item) => (
+                <button
+                    key={item.id}
+                    onClick={() => {
+                        setActiveTab(item.id as any);
+                        if (isMobile) setIsMobileMenuOpen(false);
+                    }}
+                    className={`w-full flex items-center ${isMobile ? 'justify-start px-4' : 'justify-center md:justify-start px-0 md:px-4'} py-3 rounded-xl text-sm font-medium transition-colors ${
+                        activeTab === item.id
+                            ? 'bg-white dark:bg-zinc-800 text-text-primary dark:text-white shadow-sm'
+                            : 'text-text-secondary dark:text-zinc-400 hover:text-text-primary dark:hover:text-white hover:bg-white/50 dark:hover:bg-zinc-800/50'
+                    }`}
+                    title={item.label}
+                >
+                    <item.icon size={20} className={`shrink-0 ${activeTab === item.id ? item.color : ''}`} />
+                    <span className={`${isMobile ? 'block' : 'hidden md:block'} whitespace-nowrap overflow-hidden ml-3`}>{item.label}</span>
+                </button>
+            ))}
+        </nav>
+    );
 
     const isLearningView = state.view !== 'DASHBOARD' || state.mode === 'WORD_LIST' || state.mode === 'PROGRESS' || state.mode === 'TODAY';
     const showSidebar = !isLearningView || activeTab === 'WORD_STUDY'; 
@@ -225,117 +267,52 @@ const App = () => {
             </div>
 
             <div className="flex flex-1 overflow-hidden relative z-10">
+                {/* Mobile Sidebar Overlay */}
+                <div
+                    className={`fixed inset-0 z-50 md:hidden flex transition-opacity duration-300 ${
+                        isMobileMenuOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+                    }`}
+                >
+                    <div 
+                        className={`absolute inset-0 bg-black/50 backdrop-blur-sm transition-opacity duration-300 ${isMobileMenuOpen ? 'opacity-100' : 'opacity-0'}`} 
+                        onClick={() => setIsMobileMenuOpen(false)} 
+                    />
+                    <div 
+                        className={`relative w-64 bg-slate-100 dark:bg-zinc-900 border-r border-slate-200 dark:border-zinc-800 flex flex-col h-full shadow-2xl transition-transform duration-300 ease-out z-50 ${
+                            isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
+                        }`}
+                    >
+                             <div className="h-16 flex items-center px-6 gap-3 font-bold text-xl tracking-tighter text-text-primary dark:text-white">
+                                <Trophy className="text-accent shrink-0" /> <span>VocaMaster</span>
+                            </div>
+                            {renderNav(true)}
+                    </div>
+                </div>
+                
+                {/* Floating Hamburger Button for Mobile - Glassmorphism Style */}
+                <button
+                    onClick={() => setIsMobileMenuOpen(true)}
+                    className={`fixed bottom-6 right-6 z-40 md:hidden w-14 h-14 rounded-full shadow-2xl flex items-center justify-center transition-all duration-500 cubic-bezier(0.34, 1.56, 0.64, 1) backdrop-blur-md border border-white/40 dark:border-white/10 overflow-hidden ${
+                        shouldShowSidebar ? 'hidden' : ''
+                    } ${
+                        isMobileMenuOpen 
+                            ? 'scale-0 opacity-0 rotate-90' 
+                            : 'scale-100 opacity-100 rotate-0 bg-white/60 dark:bg-zinc-800/60 text-slate-800 dark:text-white hover:bg-white/80 dark:hover:bg-zinc-700/80 hover:scale-105 active:scale-95'
+                    }`}
+                    aria-label="Menu"
+                >
+                    <div className="absolute inset-0 bg-gradient-to-br from-white/40 to-transparent dark:from-white/5 pointer-events-none" />
+                    <Menu size={24} className="relative z-10 drop-shadow-sm" />
+                </button>
+
+
                 {/* Flat Sidebar - Terrain Style */}
                 {shouldShowSidebar && (
-                    <div className="w-20 md:w-64 bg-slate-100 dark:bg-zinc-900 border-r border-slate-200 dark:border-zinc-800 flex flex-col h-full shrink-0 z-20 transition-all duration-300">
+                    <div className="hidden md:flex w-20 md:w-64 bg-slate-100 dark:bg-zinc-900 border-r border-slate-200 dark:border-zinc-800 flex-col h-full shrink-0 z-20 transition-all duration-300">
                         <div className="h-20 flex items-center justify-center md:justify-start px-0 md:px-6 gap-3 font-bold text-xl tracking-tighter text-text-primary dark:text-white overflow-hidden whitespace-nowrap">
                             <Trophy className="text-accent shrink-0" /> <span className="hidden md:inline">VocaMaster</span>
                         </div>
-                        <nav className="flex-1 overflow-y-auto w-full space-y-2 px-2 md:px-3">
-                            <button
-                                onClick={() => setActiveTab('DASHBOARD')}
-                                className={`w-full flex items-center justify-center md:justify-start gap-3 px-0 md:px-4 py-3 rounded-xl text-sm font-medium transition-colors ${
-                                    activeTab === 'DASHBOARD'
-                                        ? 'bg-white dark:bg-zinc-800 text-text-primary dark:text-white shadow-sm'
-                                        : 'text-text-secondary dark:text-zinc-400 hover:text-text-primary dark:hover:text-white hover:bg-white/50 dark:hover:bg-zinc-800/50'
-                                }`}
-                                title="대시보드"
-                            >
-                                <Home size={20} className={`shrink-0 ${activeTab === 'DASHBOARD' ? 'text-accent' : ''}`} />
-                                <span className="hidden md:block whitespace-nowrap overflow-hidden">대시보드</span>
-                            </button>
-                            
-                            <button
-                                onClick={() => setActiveTab('WORD_STUDY')}
-                                className={`w-full flex items-center justify-center md:justify-start gap-3 px-0 md:px-4 py-3 rounded-xl text-sm font-medium transition-colors ${
-                                    activeTab === 'WORD_STUDY'
-                                        ? 'bg-white dark:bg-zinc-800 text-text-primary dark:text-white shadow-sm'
-                                        : 'text-text-secondary dark:text-zinc-400 hover:text-text-primary dark:hover:text-white hover:bg-white/50 dark:hover:bg-zinc-800/50'
-                                }`}
-                                title="단어학습"
-                            >
-                                <Book size={20} className={`shrink-0 ${activeTab === 'WORD_STUDY' ? 'text-blue-500' : ''}`} />
-                                <span className="hidden md:block whitespace-nowrap overflow-hidden">단어학습</span>
-                            </button>
-
-                            <button
-                                onClick={() => setActiveTab('BOOKMARKS')}
-                                className={`w-full flex items-center justify-center md:justify-start gap-3 px-0 md:px-4 py-3 rounded-xl text-sm font-medium transition-colors ${
-                                    activeTab === 'BOOKMARKS'
-                                        ? 'bg-white dark:bg-zinc-800 text-text-primary dark:text-white shadow-sm'
-                                        : 'text-text-secondary dark:text-zinc-400 hover:text-text-primary dark:hover:text-white hover:bg-white/50 dark:hover:bg-zinc-800/50'
-                                }`}
-                                title="나만의 단어장"
-                            >
-                                <Bookmark size={20} className={`shrink-0 ${activeTab === 'BOOKMARKS' ? 'text-emerald-500' : ''}`} />
-                                <span className="hidden md:block whitespace-nowrap overflow-hidden">나만의 단어장</span>
-                            </button>
-
-                            <button
-                                onClick={() => setActiveTab('STATS')}
-                                className={`w-full flex items-center justify-center md:justify-start gap-3 px-0 md:px-4 py-3 rounded-xl text-sm font-medium transition-colors ${
-                                    activeTab === 'STATS'
-                                        ? 'bg-white dark:bg-zinc-800 text-text-primary dark:text-white shadow-sm'
-                                        : 'text-text-secondary dark:text-zinc-400 hover:text-text-primary dark:hover:text-white hover:bg-white/50 dark:hover:bg-zinc-800/50'
-                                }`}
-                                title="통계"
-                            >
-                                <BarChart size={20} className={`shrink-0 ${activeTab === 'STATS' ? 'text-orange-500' : ''}`} />
-                                <span className="hidden md:block whitespace-nowrap overflow-hidden">통계</span>
-                            </button>
-
-                            <button
-                                onClick={() => setActiveTab('ARCADE')}
-                                className={`w-full flex items-center justify-center md:justify-start gap-3 px-0 md:px-4 py-3 rounded-xl text-sm font-medium transition-colors ${
-                                    activeTab === 'ARCADE'
-                                        ? 'bg-white dark:bg-zinc-800 text-text-primary dark:text-white shadow-sm'
-                                        : 'text-text-secondary dark:text-zinc-400 hover:text-text-primary dark:hover:text-white hover:bg-white/50 dark:hover:bg-zinc-800/50'
-                                }`}
-                                title="아케이드"
-                            >
-                                <Gamepad2 size={20} className={`shrink-0 ${activeTab === 'ARCADE' ? 'text-purple-500' : ''}`} />
-                                <span className="hidden md:block whitespace-nowrap overflow-hidden">아케이드</span>
-                            </button>
-
-                            <button
-                                onClick={() => setActiveTab('HISTORY')}
-                                className={`w-full flex items-center justify-center md:justify-start gap-3 px-0 md:px-4 py-3 rounded-xl text-sm font-medium transition-colors ${
-                                    activeTab === 'HISTORY'
-                                        ? 'bg-white dark:bg-zinc-800 text-text-primary dark:text-white shadow-sm'
-                                        : 'text-text-secondary dark:text-zinc-400 hover:text-text-primary dark:hover:text-white hover:bg-white/50 dark:hover:bg-zinc-800/50'
-                                }`}
-                                title="학습 기록"
-                            >
-                                <History size={20} className={`shrink-0 ${activeTab === 'HISTORY' ? 'text-blue-500' : ''}`} />
-                                <span className="hidden md:block whitespace-nowrap overflow-hidden">학습 기록</span>
-                            </button>
-
-                            <button
-                                onClick={() => setActiveTab('SETTINGS')}
-                                className={`w-full flex items-center justify-center md:justify-start gap-3 px-0 md:px-4 py-3 rounded-xl text-sm font-medium transition-colors ${
-                                    activeTab === 'SETTINGS'
-                                        ? 'bg-white dark:bg-zinc-800 text-text-primary dark:text-white shadow-sm'
-                                        : 'text-text-secondary dark:text-zinc-400 hover:text-text-primary dark:hover:text-white hover:bg-white/50 dark:hover:bg-zinc-800/50'
-                                }`}
-                                title="설정"
-                            >
-                                <Settings size={20} className={`shrink-0 ${activeTab === 'SETTINGS' ? 'text-gray-500' : ''}`} />
-                                <span className="hidden md:block whitespace-nowrap overflow-hidden">설정</span>
-                            </button>
-
-                            <button
-                                onClick={() => setActiveTab('PROFILE')}
-                                className={`w-full flex items-center justify-center md:justify-start gap-3 px-0 md:px-4 py-3 rounded-xl text-sm font-medium transition-colors ${
-                                    activeTab === 'PROFILE'
-                                        ? 'bg-white dark:bg-zinc-800 text-text-primary dark:text-white shadow-sm'
-                                        : 'text-text-secondary dark:text-zinc-400 hover:text-text-primary dark:hover:text-white hover:bg-white/50 dark:hover:bg-zinc-800/50'
-                                }`}
-                                title="프로필"
-                            >
-                                <UserIcon size={20} className={`shrink-0 ${activeTab === 'PROFILE' ? 'text-purple-500' : ''}`} />
-                                <span className="hidden md:block whitespace-nowrap overflow-hidden">프로필</span>
-                            </button>
-                        </nav>
+                        {renderNav(false)}
                     </div>
                 )}
 
@@ -383,6 +360,10 @@ const App = () => {
                             <WordListView dataSetId={state.dayId} onExit={handleDashboard} />
                         )}
 
+                        {state.mode === 'PLAYER' && state.dayId && (
+                            <PlayerView dataSetId={state.dayId} onExit={handleDashboard} />
+                        )}
+
                         {state.mode === 'PROGRESS' && (
                             <ProgressView dataSetId={state.dayId ?? undefined} onExit={handleDashboard} />
                         )}
@@ -423,7 +404,12 @@ const App = () => {
                         )}
 
                         {state.view === 'RESULT' && state.lastStats && (
-                            <ResultView stats={state.lastStats} onRetry={() => dispatch({ type: 'RETRY_QUIZ' })} onDashboard={handleDashboard} />
+                            <ResultView 
+                                stats={state.lastStats} 
+                                words={DATA_SETS.find(d => d.id === state.dayId)?.words}
+                                onRetry={() => dispatch({ type: 'RETRY_QUIZ' })} 
+                                onDashboard={handleDashboard} 
+                            />
                         )}
                     </div>
                 </main>
@@ -432,11 +418,11 @@ const App = () => {
             {/* Mode Picker Modal */}
             {modePickerDayId && (
                 <div className="absolute inset-0 z-50 bg-black/50 dark:bg-black/80 flex items-center justify-center animate-in fade-in duration-200 backdrop-blur-sm" onClick={closeModePicker}>
-                    <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 w-full max-w-2xl p-8 rounded-3xl mx-4 shadow-2xl scale-100 animate-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex items-start justify-between gap-4 mb-8">
+                    <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 w-full max-w-2xl p-4 md:p-8 rounded-3xl mx-4 shadow-2xl scale-100 animate-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-start justify-between gap-4 mb-4 md:mb-8">
                             <div>
                                 <p className="text-xs text-accent font-bold tracking-widest uppercase mb-2">학습 모드 선택</p>
-                                <h3 className="text-3xl font-bold text-text-primary dark:text-white">
+                                <h3 className="text-2xl md:text-3xl font-bold text-text-primary dark:text-white">
                                     {DATA_SETS.find(d => d.id === modePickerDayId)?.title ?? '선택한 Day'}
                                 </h3>
                                 <p className="text-text-secondary dark:text-zinc-400 text-sm mt-2">키보드 숫자키 1~4를 눌러 빠르게 시작하세요.</p>
@@ -492,7 +478,7 @@ const App = () => {
                                 </div>
                             </button>
 
-                            <button onClick={() => handleStartDayMode('PROGRESS')} className="group text-left p-6 rounded-2xl bg-slate-50 dark:bg-zinc-800/50 border border-slate-100 dark:border-zinc-700 hover:border-accent dark:hover:border-accent hover:bg-white dark:hover:bg-zinc-800 transition-all relative overflow-hidden md:col-span-2">
+                            <button onClick={() => handleStartDayMode('PROGRESS')} className="group text-left p-6 rounded-2xl bg-slate-50 dark:bg-zinc-800/50 border border-slate-100 dark:border-zinc-700 hover:border-accent dark:hover:border-accent hover:bg-white dark:hover:bg-zinc-800 transition-all relative overflow-hidden">
                                 <div className="absolute top-4 right-4 text-xs font-bold text-text-secondary dark:text-zinc-500 border border-slate-200 dark:border-zinc-700 px-2 py-1 rounded-md bg-white dark:bg-zinc-900">5</div>
                                 <div className="w-12 h-12 rounded-xl bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform shadow-sm">
                                     <Trophy size={24} />
@@ -500,6 +486,16 @@ const App = () => {
                                 <h3 className="text-xl font-bold text-text-primary dark:text-white mb-1">학습 현황</h3>
                                 <p className="text-sm text-text-secondary dark:text-zinc-400">진도율 확인</p>
                             </button>
+
+                            <button onClick={() => handleStartDayMode('PLAYER')} className="group text-left p-6 rounded-2xl bg-slate-50 dark:bg-zinc-800/50 border border-slate-100 dark:border-zinc-700 hover:border-accent dark:hover:border-accent hover:bg-white dark:hover:bg-zinc-800 transition-all relative overflow-hidden">
+                                <div className="absolute top-4 right-4 text-xs font-bold text-text-secondary dark:text-zinc-500 border border-slate-200 dark:border-zinc-700 px-2 py-1 rounded-md bg-white dark:bg-zinc-900">6</div>
+                                <div className="w-12 h-12 rounded-xl bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform shadow-sm">
+                                    <Play size={24} />
+                                </div>
+                                <h3 className="text-xl font-bold text-text-primary dark:text-white mb-1">재생 모드</h3>
+                                <p className="text-sm text-text-secondary dark:text-zinc-400">오디오 플레이어로 학습</p>
+                            </button>
+
                         </div>
                     </div>
                 </div>
@@ -508,8 +504,8 @@ const App = () => {
             {/* Exit Confirmation Modal - unchanged */}
             {exitConfirm && (
                 <div className="absolute inset-0 z-50 bg-black/20 flex items-center justify-center p-4 animate-in fade-in duration-200">
-                    <div className="bg-white border border-slate-200 w-full max-w-md p-8 rounded-3xl mx-4 shadow-xl scale-100 animate-in zoom-in-95 duration-200">
-                        <h3 className="text-2xl font-bold text-text-primary mb-3">학습을 종료할까요?</h3>
+                    <div className="bg-white border border-slate-200 w-full max-w-md p-6 rounded-3xl mx-4 shadow-xl scale-100 animate-in zoom-in-95 duration-200">
+                        <h3 className="text-xl md:text-2xl font-bold text-text-primary mb-3">학습을 종료할까요?</h3>
                         <p className="text-text-secondary mb-8 leading-relaxed">진행 상황을 저장하면<br/>나중에 이어서 계속할 수 있어요.</p>
                         <div className="flex flex-col gap-3">
                             <button

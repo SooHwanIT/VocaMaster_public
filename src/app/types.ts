@@ -1,7 +1,7 @@
 import type { WordWithStats } from '../db';
 
 export type ViewState = 'DASHBOARD' | 'QUIZ' | 'RESULT' | 'WORD_STUDY_MAIN';
-export type AppMode = 'WORD_LIST' | 'CHOICE' | 'WRITE' | 'PROGRESS' | 'TODAY' | 'PROFILE' | 'DASHBOARD_MAIN' | 'TEST';
+export type AppMode = 'WORD_LIST' | 'CHOICE' | 'WRITE' | 'PROGRESS' | 'TODAY' | 'PROFILE' | 'DASHBOARD_MAIN' | 'TEST' | 'PLAYER';
 export type QuizMode = 'CHOICE' | 'WRITE' | 'TEST';
 
 export type AppTheme = 'light' | 'dark';
@@ -20,6 +20,7 @@ export type SessionStats = {
     endTime: number;
     totalWordCount: number;
     wrongAttempts: number;
+    wrongWords?: string[]; // 상세 오답 기록 (wordId 목록)
 };
 
 export type ResumeState = {

@@ -47,9 +47,9 @@ const WordStudyView = ({
     }, []);
 
     return (
-        <div className="flex flex-col h-full w-full p-8 overflow-y-auto bg-slate-50 dark:bg-[#09090b] transition-colors duration-300">
+        <div className="flex flex-col h-full w-full p-4 md:p-8 overflow-y-auto bg-slate-50 dark:bg-[#09090b] transition-colors duration-300">
             <div className="flex justify-between items-end mb-8">
-                <h2 className="text-4xl font-extrabold text-text-primary dark:text-white tracking-tight font-sans transition-colors">단어 학습</h2>
+                <h2 className="text-3xl md:text-4xl font-extrabold text-text-primary dark:text-white tracking-tight font-sans transition-colors">단어 학습</h2>
             </div>
 
             {resumeState && (

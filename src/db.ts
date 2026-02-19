@@ -35,6 +35,7 @@ export interface StudySession {
   totalCount: number;
   correctCount: number;
   wrongCount: number;
+  wrongWords?: string[];
 }
 
 // --- Database Class ---
