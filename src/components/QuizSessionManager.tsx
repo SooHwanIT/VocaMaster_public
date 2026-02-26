@@ -9,7 +9,9 @@ import {
     saveQuizSession,
     saveResumeState
 } from '../app/storage';
-import type { QuizMode, QuizSessionItem, QuizSessionSnapshot, QuizUIProps, SessionStats } from '../app/types';
+import type { QuizSessionItem, QuizSessionSnapshot, QuizUIProps, SessionStats } from '../app/types';
+
+type QuizStudyMode = 'CHOICE' | 'WRITE';
 
 const QuizSessionManager = ({
     dataSetId,
@@ -19,7 +21,7 @@ const QuizSessionManager = ({
     renderQuizUI
 }: {
     dataSetId: string;
-    mode: QuizMode;
+    mode: QuizStudyMode;
     onFinish: (stats: SessionStats) => void;
     onQuit: () => void;
     renderQuizUI: (props: QuizUIProps) => React.ReactElement;
@@ -211,6 +213,16 @@ const QuizSessionManager = ({
         setShowExitConfirm(false);
     };
 
+    const handleQuitNow = () => {
+        clearQuizSession(dataSetId, mode);
+        const resume = loadResumeState();
+        if (resume && resume.mode === mode && resume.dayId === dataSetId) {
+            clearResumeState();
+        }
+        setShowExitConfirm(false);
+        onQuit();
+    };
+
     return (
         <>
             {renderQuizUI({
@@ -241,6 +253,12 @@ const QuizSessionManager = ({
                                 className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-lg shadow-lg hover:shadow-blue-500/20 transition-all hover:-translate-y-0.5"
                             >
                                 중단하고 결과 보기
+                            </button>
+                            <button
+                                onClick={handleQuitNow}
+                                className="w-full py-3 bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-slate-700 dark:text-zinc-200 rounded-xl font-bold transition-colors"
+                            >
+                                저장하지 않고 종료
                             </button>
                             <button 
                                 onClick={() => setShowExitConfirm(false)} 

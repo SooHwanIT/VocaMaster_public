@@ -1,11 +1,12 @@
 ﻿import React, { useCallback, useEffect, useState } from 'react';
-import { Book, BookOpen, Home, Keyboard, Trophy, X, User as UserIcon, BarChart, Bookmark, Settings, History, Gamepad2, FileCheck, Menu, Play, ChevronRight } from 'lucide-react';
+import { Book, BookOpen, Home, Keyboard, Library, Minus, Square, Trophy, X, User as UserIcon, BarChart, Bookmark, Settings, History, Gamepad2, FileCheck, Menu, Play, ChevronRight } from 'lucide-react';
 
 import { saveStudySession } from './db';
+import { DATA_SETS } from './data';
 import { STORAGE_KEY } from './app/constants';
 import { appReducer, getInitialState } from './app/state';
 import { clearResumeState, loadResumeState, saveResumeState } from './app/storage';
-import type { AppMode, ResumeState, SessionStats } from './app/types';
+import type { AppMode, QuizMode, ResumeState, SessionStats } from './app/types';
 
 import DashboardView from './components/DashboardView';
 import WordStudyView from './components/WordStudyView';
@@ -24,11 +25,12 @@ import TestSessionManager from './components/TestSessionManager';
 import ResultView from './components/ResultView';
 import ArcadeView from './components/ArcadeView';
 import PlayerView from './components/PlayerView';
+import TestModeUI from './components/TestModeUI';
+import TestResultView from './components/TestResultView';
 
 const App = () => {
     const [state, dispatch] = React.useReducer(appReducer, undefined, getInitialState);
     const [modePickerDayId, setModePickerDayId] = useState<string | null>(null);
-    const [lastWordStudyDayId, setLastWordStudyDayId] = useState<string | null>(null);
     const [resumeState, setResumeState] = useState<ResumeState | null>(() => loadResumeState());
     const [exitConfirm, setExitConfirm] = useState<{ mode: AppMode; dayId: string | null } | null>(null);
 
@@ -63,8 +65,6 @@ const App = () => {
 
 
     const openModePicker = useCallback((id: string) => {
-        setActiveTab('WORD_STUDY');
-        setLastWordStudyDayId(id);
         setModePickerDayId(id);
     }, []);
 
@@ -74,7 +74,6 @@ const App = () => {
 
     const handleStartDayMode = useCallback((mode: AppMode) => {
         if (!modePickerDayId) return;
-        setLastWordStudyDayId(modePickerDayId);
         dispatch({ type: 'START_DAY_MODE', dayId: modePickerDayId, mode });
         setModePickerDayId(null);
     }, [modePickerDayId, dispatch]);
@@ -86,39 +85,29 @@ const App = () => {
             return;
         }
         if (!resumeState.dayId) return;
-        setActiveTab('WORD_STUDY');
-        setLastWordStudyDayId(resumeState.dayId);
         dispatch({ type: 'START_DAY_MODE', dayId: resumeState.dayId, mode: resumeState.mode });
     };
 
-    const navigateBackToWordStudy = useCallback((reopenModePicker: boolean) => {
-        dispatch({ type: 'BACK_DASHBOARD' });
-        setActiveTab('WORD_STUDY');
-        if (reopenModePicker && lastWordStudyDayId) {
-            setModePickerDayId(lastWordStudyDayId);
-        }
-    }, [dispatch, lastWordStudyDayId]);
-
-    const requestExit = (forceImmediate = false) => {
-        if (!forceImmediate && (state.mode === 'CHOICE' || state.mode === 'WRITE')) {
+    const requestExit = () => {
+        if (state.mode === 'CHOICE' || state.mode === 'WRITE') {
             setExitConfirm({ mode: state.mode, dayId: state.dayId });
             return;
         }
-        navigateBackToWordStudy(true);
+        dispatch({ type: 'BACK_DASHBOARD' });
     };
 
     const handleExitSave = () => {
         saveResumeState({ mode: state.mode, dayId: state.dayId, savedAt: Date.now() });
         setResumeState(loadResumeState());
         setExitConfirm(null);
-        navigateBackToWordStudy(true);
+        dispatch({ type: 'BACK_DASHBOARD' });
     };
 
     const handleExitDiscard = () => {
         clearResumeState();
         setResumeState(null);
         setExitConfirm(null);
-        navigateBackToWordStudy(true);
+        dispatch({ type: 'BACK_DASHBOARD' });
     };
 
     useEffect(() => {
@@ -165,11 +154,7 @@ const App = () => {
     };
 
     const handleDashboard = () => {
-        navigateBackToWordStudy(true);
-    };
-
-    const handleRetryQuiz = () => {
-        dispatch({ type: 'RETRY_QUIZ' });
+        dispatch({ type: 'BACK_DASHBOARD' });
     };
 
     const navItems = [
@@ -206,14 +191,9 @@ const App = () => {
         </nav>
     );
 
-    const isActiveLearning =
-        state.view === 'QUIZ' ||
-        state.view === 'RESULT' ||
-        state.mode === 'WORD_LIST' ||
-        state.mode === 'PROGRESS' ||
-        state.mode === 'TODAY' ||
-        state.mode === 'PLAYER' ||
-        state.mode === 'TEST';
+    const isLearningView = state.view !== 'DASHBOARD' || state.mode === 'WORD_LIST' || state.mode === 'PROGRESS' || state.mode === 'TODAY';
+    
+    const isActiveLearning = state.view === 'QUIZ' || state.mode === 'WORD_LIST' || state.mode === 'PROGRESS' || state.mode === 'TODAY';
     const shouldShowSidebar = !isActiveLearning;
 
     return (
@@ -250,7 +230,7 @@ const App = () => {
                 <button
                     onClick={() => setIsMobileMenuOpen(true)}
                     className={`fixed bottom-6 right-6 z-40 md:hidden w-14 h-14 rounded-full shadow-2xl flex items-center justify-center transition-all duration-500 cubic-bezier(0.34, 1.56, 0.64, 1) backdrop-blur-md border border-white/40 dark:border-white/10 overflow-hidden ${
-                        !shouldShowSidebar ? 'hidden' : ''
+                        shouldShowSidebar ? 'hidden' : ''
                     } ${
                         isMobileMenuOpen 
                             ? 'scale-0 opacity-0 rotate-90' 
@@ -287,14 +267,15 @@ const App = () => {
                     {state.view === 'DASHBOARD' ? (
                         <>
                             {activeTab === 'DASHBOARD' && (
-                                <DashboardView />
+                                <DashboardView 
+                                    onResume={handleResume}
+                                    resumeState={resumeState}
+                                    onOpenModePicker={openModePicker}
+                                    stats={state.stats}
+                                />
                             )}
                             {activeTab === 'WORD_STUDY' && (
-                                <WordStudyView
-                                    onOpenModePicker={openModePicker}
-                                    resumeState={resumeState}
-                                    onResume={handleResume}
-                                />
+                                <WordStudyView onSelectDay={(dayId) => openModePicker(dayId)} />
                             )}
                             {activeTab === 'BOOKMARKS' && (
                                 <BookmarksView />
@@ -306,16 +287,10 @@ const App = () => {
                                 <HistoryView />
                             )}
                             {activeTab === 'SETTINGS' && (
-                                <SettingsView
-                                    theme={state.theme ?? 'light'}
-                                    onThemeChange={(theme) => dispatch({ type: 'SET_THEME', theme })}
-                                />
+                                <SettingsView />
                             )}
                             {activeTab === 'PROFILE' && (
-                                <ProfileView
-                                    theme={state.theme ?? 'light'}
-                                    onThemeChange={(theme) => dispatch({ type: 'SET_THEME', theme })}
-                                />
+                                <ProfileView />
                             )}
                             {activeTab === 'ARCADE' && (
                                 <ArcadeView />
@@ -334,25 +309,29 @@ const App = () => {
                                     dataSetId={state.dayId}
                                     mode="CHOICE"
                                     onFinish={handleQuizFinish}
-                                    onQuit={() => requestExit(true)}
-                                    renderQuizUI={(props) => <ChoiceQuizUI {...props} />}
-                                />
+                                    onExit={requestExit}
+                                >
+                                    {(props) => <ChoiceQuizUI {...props} />}
+                                </QuizSessionManager>
                             )}
                             {state.mode === 'WRITE' && state.dayId && (
                                 <QuizSessionManager
                                     dataSetId={state.dayId}
                                     mode="WRITE"
                                     onFinish={handleQuizFinish} 
-                                    onQuit={() => requestExit(true)}
-                                    renderQuizUI={(props) => <WriteQuizUI {...props} />}
-                                />
+                                    onExit={requestExit}
+                                >
+                                    {(props) => <WriteQuizUI {...props} />}
+                                </QuizSessionManager>
                             )}
                             {state.mode === 'TEST' && state.dayId && (
                                 <TestSessionManager
                                     dataSetId={state.dayId}
                                     onFinish={handleQuizFinish}
-                                    onQuit={requestExit}
-                                />
+                                    onExit={requestExit}
+                                >
+                                    {(props) => <TestModeUI {...props} />}
+                                </TestSessionManager>
                             )}
                              {state.mode === 'PROGRESS' && state.dayId && (
                                 <ProgressView dataSetId={state.dayId} onExit={requestExit} />
@@ -366,12 +345,10 @@ const App = () => {
                                 <TodayStudyView onExit={requestExit} />
                             )}
 
-                            {state.view === 'RESULT' && state.lastStats && (
-                                <ResultView
-                                    stats={state.lastStats}
-                                    onRetry={handleRetryQuiz}
-                                    onDashboard={handleDashboard}
-                                />
+                            {state.view === 'RESULT' && state.lastSessionStats && (
+                                state.mode === 'TEST' 
+                                ? <TestResultView stats={state.lastSessionStats} onExit={handleDashboard} />
+                                : <ResultView stats={state.lastSessionStats} onExit={handleDashboard} />
                             )}
                         </div>
                     )}
