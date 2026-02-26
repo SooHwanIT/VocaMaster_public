@@ -23,4 +23,4 @@ export const speakText = (text: string) => {
     window.speechSynthesis.speak(utter);
 };
 
-export const isElectron = () => typeof navigator === 'object' && /electron/i.test(navigator.userAgent);
+export const isElectron = () => false;

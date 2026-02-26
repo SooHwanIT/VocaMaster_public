@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { X, Play, Pause, SkipBack, SkipForward, Settings } from 'lucide-react';
-import { getAllAudioUrls } from 'google-tts-api';
+// import { getAllAudioUrls } from 'google-tts-api';
 import { DATA_SETS } from '../data';
 import type { Word } from '../data/types';
 
@@ -41,8 +41,13 @@ const PlayerView = ({ dataSetId, onExit }: { dataSetId: string; onExit: () => vo
 
     // 3. Refs
     const isComponentMounted = useRef(true);
-    const currentAudio = useRef<HTMLAudioElement | null>(null);
+    const isPlayingRef = useRef(false);
+    const currentUtterance = useRef<SpeechSynthesisUtterance | null>(null);
     const dataSet = DATA_SETS.find(d => d.id === dataSetId);
+
+    useEffect(() => {
+        isPlayingRef.current = isPlaying;
+    }, [isPlaying]);
 
     // 4. Initialize Words
     useEffect(() => {
@@ -63,98 +68,53 @@ const PlayerView = ({ dataSetId, onExit }: { dataSetId: string; onExit: () => vo
     // 6. Cleanup on Unmount
     useEffect(() => {
         isComponentMounted.current = true;
-        // 페이지 들어올 때 기존 오디오 정지
-        if (currentAudio.current) {
-            currentAudio.current.pause();
-            currentAudio.current = null;
-        }
+        window.speechSynthesis.cancel();
+        currentUtterance.current = null;
         
         return () => {
             isComponentMounted.current = false;
-            // 페이지 나갈 때 오디오 정지
-            if (currentAudio.current) {
-                currentAudio.current.pause();
-                currentAudio.current = null;
-            }
+            window.speechSynthesis.cancel();
+            currentUtterance.current = null;
         };
     }, []);
 
 
-    // --- Core TTS Function (Google TTS API Version) ---
+    // --- Core TTS Function ---
     const speakOne = useCallback((text: string, lang: string, rate: number): Promise<void> => {
-        return new Promise(async (resolve) => {
+        return new Promise((resolve) => {
             if (!text || !isComponentMounted.current) {
                 resolve();
                 return;
             }
 
-            // 기존 오디오 정지
-            if (currentAudio.current) {
-                currentAudio.current.pause();
-                currentAudio.current = null;
+            if (!isPlayingRef.current) {
+                resolve();
+                return;
             }
 
+            window.speechSynthesis.cancel();
+            currentUtterance.current = null;
+
             try {
-                // 1. Google TTS URL 생성 (200자 제한 자동 분할 처리)
-                // ko-KR -> ko, en-US -> en 매핑 필요
-                const targetLang = lang === 'ko-KR' ? 'ko' : 'en';
-                
-                const urls = getAllAudioUrls(text, {
-                    lang: targetLang,
-                    slow: false, // HTML5 Audio playbackRate로 속도 조절
-                    host: 'https://translate.google.com',
-                    splitPunct: ',.?!' 
-                });
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.lang = lang;
+                utterance.rate = rate;
+                utterance.pitch = 1;
+                currentUtterance.current = utterance;
 
-                console.log(`[TTS Debug] Generating audio for: "${text}" (${lang}) -> ${urls.length} chunks`);
-
-                // 2. 순차 재생 함수
-                const playUrl = (urlInfo: { url: string, shortText: string }): Promise<void> => {
-                    return new Promise((res) => {
-                        if (!isComponentMounted.current || (!isPlaying && currentAudio.current !== null)) { 
-                           // Stop condition check
-                        }
-
-                        console.log(`[TTS Debug] Playing chunk: ${urlInfo.url}`);
-                        const audio = new Audio(urlInfo.url);
-                        audio.playbackRate = rate; 
-                        currentAudio.current = audio;
-
-                        // 재생이 끝나거나 에러가 나면 해결
-                        const finish = () => {
-                            currentAudio.current = null;
-                            res();
-                        };
-
-                        audio.onended = () => {
-                            console.log(`[TTS Debug] Chunk finished`);
-                            finish();
-                        }
-                        audio.onerror = (e) => {
-                            console.error(`[TTS Debug] Audio Error:`, e);
-                            finish();
-                        };
-
-                        audio.play().then(() => {
-                            console.log(`[TTS Debug] Playback started`);
-                        }).catch(e => {
-                            console.warn(`[TTS Debug] Autoplay blocked or error:`, e);
-                            finish();
-                        });
-                    });
+                const finish = () => {
+                    if (currentUtterance.current === utterance) {
+                        currentUtterance.current = null;
+                    }
+                    resolve();
                 };
 
-                // 3. 모든 조각 순차 재생
-                for (const urlInfo of urls) {
-                    if (!isComponentMounted.current) break;
-                     // Stop 요청 들어오면 중단 (currentAudio가 null이거나 다른 걸로 바뀌었을 수 있음 - 체크 필요하지만 여기선 flag로 관리)
-                    await playUrl(urlInfo);
-                }
-                
-                resolve();
+                utterance.onend = finish;
+                utterance.onerror = finish;
 
+                window.speechSynthesis.speak(utterance);
             } catch (e) {
-                console.error("Google TTS Generation Error:", e);
+                console.error('TTS error:', e);
                 resolve();
             }
         });
@@ -178,11 +138,11 @@ const PlayerView = ({ dataSetId, onExit }: { dataSetId: string; onExit: () => vo
         setCurrentIndex(index);
         
         for (let r = 0; r < currentSettings.repeatCount; r++) {
-            if (!isComponentMounted.current || !isPlaying) return;
+            if (!isComponentMounted.current || !isPlayingRef.current) return;
 
              // 1. Word
             await speakOne(wordPayload.word, 'en-US', currentSettings.rate);
-            if (!isComponentMounted.current || !isPlaying) return;
+            if (!isComponentMounted.current || !isPlayingRef.current) return;
             await new Promise(res => setTimeout(res, currentSettings.delay * 1000));
 
             // 2. Meaning (Korean)
@@ -191,7 +151,7 @@ const PlayerView = ({ dataSetId, onExit }: { dataSetId: string; onExit: () => vo
                 const cleanMeaning = wordPayload.definitions.join(', ').replace(/\(.*\)/g, '');
                 
                 await speakOne(cleanMeaning, 'ko-KR', currentSettings.rate);
-                if (!isComponentMounted.current || !isPlaying) return;
+                if (!isComponentMounted.current || !isPlayingRef.current) return;
                 await new Promise(res => setTimeout(res, currentSettings.delay * 1000));
             }
 
@@ -199,7 +159,7 @@ const PlayerView = ({ dataSetId, onExit }: { dataSetId: string; onExit: () => vo
             if (currentSettings.includeExample && wordPayload.examples && wordPayload.examples.length > 0) {
                 const exampleText = wordPayload.examples[0].text;
                 await speakOne(exampleText, 'en-US', currentSettings.rate);
-                if (!isComponentMounted.current || !isPlaying) return;
+                if (!isComponentMounted.current || !isPlayingRef.current) return;
                 await new Promise(res => setTimeout(res, currentSettings.delay * 1000));
             }
         }
@@ -239,10 +199,8 @@ const PlayerView = ({ dataSetId, onExit }: { dataSetId: string; onExit: () => vo
 
     // --- Controls ---
     const stopAudio = () => {
-        if (currentAudio.current) {
-            currentAudio.current.pause();
-            currentAudio.current = null;
-        }
+        window.speechSynthesis.cancel();
+        currentUtterance.current = null;
     };
 
     const togglePlay = () => {
