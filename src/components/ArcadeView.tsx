@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { DATA_SETS } from '../data';
+import { DATA_SETS } from '../data.ts';
 import type { Word } from '../data';
 import { Play, Grid, Type, Clock, ArrowLeft, RefreshCw, Trophy, X, Heart, Pause } from 'lucide-react';
 

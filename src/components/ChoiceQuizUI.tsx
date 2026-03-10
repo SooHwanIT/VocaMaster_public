@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { SkipForward } from 'lucide-react';
 
-import { DATA_SETS } from '../data';
+import { DATA_SETS } from '../data.ts';
 import type { Word } from '../data/types';
 import type { QuizUIProps } from '../app/types';
 import { getLevenshteinDistance, speakText } from '../app/utils';

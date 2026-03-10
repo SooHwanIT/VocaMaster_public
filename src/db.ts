@@ -1,5 +1,5 @@
 import Dexie, { type Table } from 'dexie';
-import { DATA_SETS } from './data/index';
+import { DATA_SETS } from './data.ts';
 import type { Word } from './data/types';
 import { startOfDay } from 'date-fns';
 

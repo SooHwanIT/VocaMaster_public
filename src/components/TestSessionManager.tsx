@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useState } from 'react';
-import { DATA_SETS } from '../data';
+import { DATA_SETS } from '../data.ts';
 import TestModeUI from './TestModeUI';
 import TestResultView from './TestResultView';
 import type { SessionStats } from '../app/types';

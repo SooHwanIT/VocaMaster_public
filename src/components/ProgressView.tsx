@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { ChevronRight } from 'lucide-react';
 
-import { DATA_SETS } from '../data';
+import { DATA_SETS } from '../data.ts';
 import { getModeProgress } from '../db';
 
 const ProgressView = ({ dataSetId, onExit }: { dataSetId?: string; onExit: () => void }) => {

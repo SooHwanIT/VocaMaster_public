@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { X, Play, Pause, SkipBack, SkipForward, Settings } from 'lucide-react';
 // import { getAllAudioUrls } from 'google-tts-api';
-import { DATA_SETS } from '../data';
+import { DATA_SETS } from '../data.ts';
 import type { Word } from '../data/types';
 
 interface PlayerSettings {

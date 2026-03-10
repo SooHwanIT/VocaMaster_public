@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { CheckCircle, ChevronRight, Volume2, Star } from 'lucide-react';
 import { useLiveQuery } from 'dexie-react-hooks';
 
-import { DATA_SETS } from '../data';
+import { DATA_SETS } from '../data.ts';
 import { getWordsWithStats, setMemoryScore, type StudyRecord, db, toggleBookmark } from '../db';
 import type { Word } from '../data/types';
 import { speakText } from '../app/utils';

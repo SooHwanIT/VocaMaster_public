@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Play } from 'lucide-react';
 
-import { DATA_SETS } from '../data';
+import { DATA_SETS } from '../data.ts';
 import { getModeProgress } from '../db';
 import { MODE_LABELS } from '../app/constants';
 import type { ResumeState } from '../app/types';
