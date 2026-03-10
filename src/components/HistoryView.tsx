@@ -4,7 +4,7 @@ import { format } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import { History, Calendar, CheckCircle, Clock } from 'lucide-react';
 import { db } from '../db';
-import { DATA_SETS } from '../data';
+import { DATA_SETS } from '../data.ts';
 import TestResultView from './TestResultView';
 import ResultView from './ResultView';
 import type { SessionStats } from '../app/types';

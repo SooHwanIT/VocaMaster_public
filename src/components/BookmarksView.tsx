@@ -1,7 +1,7 @@
 import React from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db';
-import { DATA_SETS } from '../data';
+import { DATA_SETS } from '../data.ts';
 import { Bookmark, Trash2, ArrowRight } from 'lucide-react';
 
 const BookmarksView = () => {

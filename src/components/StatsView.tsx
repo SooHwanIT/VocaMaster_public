@@ -1,7 +1,7 @@
 import React from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db';
-import { DATA_SETS } from '../data';
+import { DATA_SETS } from '../data.ts';
 import { BarChart, CheckCircle, XCircle, TrendingUp, Award, Calendar } from 'lucide-react';
 
 const StatsView = () => {

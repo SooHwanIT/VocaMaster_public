@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { DATA_SETS } from '../data';
+import { DATA_SETS } from '../data.ts';
 import { getModeProgress, getTodayStats } from '../db';
 import { Activity, Trophy, Zap, Clock, Calendar, CheckSquare, Edit3, BookOpen } from 'lucide-react';
 

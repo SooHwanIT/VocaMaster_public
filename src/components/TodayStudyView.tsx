@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ChevronRight } from 'lucide-react';
 
-import { DATA_SETS } from '../data';
+import { DATA_SETS } from '../data.ts';
 import { getWordsWithStats } from '../db';
 import type { TodayDayStats } from '../app/types';
 import QuizSessionManager from './QuizSessionManager';
