@@ -60,7 +60,9 @@ const SettingsView = ({ theme, onThemeChange }: { theme: AppTheme; onThemeChange
                 stream.getTracks().forEach(t => t.stop());
                 setPermissionGranted(true);
             } catch (err) {
-                console.error('Permission request failed:', err);
+                if (import.meta.env.DEV) {
+                    console.error('Permission request failed:', err);
+                }
                 setPermissionGranted(false);
                 setLoadingDevices(false);
                 return;
@@ -75,7 +77,9 @@ const SettingsView = ({ theme, onThemeChange }: { theme: AppTheme; onThemeChange
                 }));
             setDevices(audioInputs);
         } catch (e) {
-            console.error('Mic permission denied:', e);
+            if (import.meta.env.DEV) {
+                console.error('Mic permission denied:', e);
+            }
             setPermissionGranted(false);
         }
         setLoadingDevices(false);
@@ -262,7 +266,9 @@ const SettingsView = ({ theme, onThemeChange }: { theme: AppTheme; onThemeChange
             };
 
         } catch (e) {
-            console.error('Audio stream error:', e);
+            if (import.meta.env.DEV) {
+                console.error('Audio stream error:', e);
+            }
             setTestState('fail');
             setTestTranscript('마이크에 접근할 수 없습니다.');
         }
@@ -302,18 +308,18 @@ const SettingsView = ({ theme, onThemeChange }: { theme: AppTheme; onThemeChange
     };
 
     return (
-        <div className="flex flex-col h-full bg-slate-50 dark:bg-zinc-950 overflow-y-auto w-full">
-             <div className="p-4 md:p-8 pb-4 shrink-0 w-full max-w-5xl mx-auto">
-                <h1 className="text-3xl font-black text-slate-800 dark:text-white tracking-tight mb-2 flex items-center gap-3">
+        <div className="vm-page w-full">
+             <div className="vm-page-header shrink-0 w-full max-w-5xl mx-auto">
+                <h1 className="vm-page-title mb-2 flex items-center gap-3">
                     <Settings2 className="text-gray-500" size={32} />
                     설정
                 </h1>
-                <p className="text-slate-500 dark:text-slate-400">
+                <p className="vm-page-subtitle">
                     앱 환경설정 및 개인화 옵션
                 </p>
             </div>
 
-            <div className="flex-1 p-4 md:p-8 pt-0 space-y-8 pb-20 w-full max-w-5xl mx-auto">
+            <div className="flex-1 space-y-8 pb-20 w-full max-w-5xl mx-auto">
                 {/* 1. Appearance */}
                 <section>
                     <h2 className="text-sm font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-wider mb-4 px-2">
@@ -406,7 +412,7 @@ const SettingsView = ({ theme, onThemeChange }: { theme: AppTheme; onThemeChange
                         </div>
                     </div>
                     </h2>
-                    <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-slate-100 dark:border-zinc-800 shadow-sm overflow-hidden">
+                    <div className="vm-card overflow-hidden">
                         <div className="p-4 flex items-center justify-between border-b border-slate-100 dark:border-zinc-800 last:border-0">
                             <div className="flex items-center gap-4">
                                 <div className="w-10 h-10 rounded-full bg-indigo-50 dark:bg-indigo-900/20 flex items-center justify-center text-indigo-500">
@@ -440,7 +446,7 @@ const SettingsView = ({ theme, onThemeChange }: { theme: AppTheme; onThemeChange
                     <h2 className="text-sm font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-wider mb-4 px-2">
                         학습 환경
                     </h2>
-                    <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-slate-100 dark:border-zinc-800 shadow-sm overflow-hidden divide-y divide-slate-100 dark:divide-zinc-800">
+                    <div className="vm-card overflow-hidden divide-y divide-slate-100 dark:divide-zinc-800">
                          {/* Daily Goal */}
                          <div className="p-4 flex items-center justify-between">
                             <div className="flex items-center gap-4">
@@ -505,7 +511,7 @@ const SettingsView = ({ theme, onThemeChange }: { theme: AppTheme; onThemeChange
                         </button>
                     </div>
 
-                    <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-slate-100 dark:border-zinc-800 shadow-sm overflow-hidden divide-y divide-slate-100 dark:divide-zinc-800">
+                    <div className="vm-card overflow-hidden divide-y divide-slate-100 dark:divide-zinc-800">
                          {/* Microphone Selection */}
                          <div className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
                             <div className="flex items-center gap-4">
@@ -674,7 +680,7 @@ const SettingsView = ({ theme, onThemeChange }: { theme: AppTheme; onThemeChange
                 </section>
                 
                 <div className="text-center text-xs text-slate-400 py-8">
-                    &copy; 2026 VocaMaster. All rights reserved.
+                    &copy; 2026 Etyvoca. All rights reserved.
                 </div>
             </div>
         </div>

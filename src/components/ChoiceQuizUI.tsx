@@ -1,10 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { SkipForward } from 'lucide-react';
 
-import { DATA_SETS } from '../data.ts';
-import type { Word } from '../data/types';
+import { ALL_WORDS } from '../data/index';
+import type { Word } from '../data';
 import type { QuizUIProps } from '../app/types';
-import { getLevenshteinDistance, speakText } from '../app/utils';
+import { getLevenshteinDistance, shuffleArray, speakText } from '../app/utils';
 
 const ChoiceQuizUI = ({
     current,
@@ -21,13 +21,16 @@ const ChoiceQuizUI = ({
 
     useEffect(() => {
         if (!current) return;
-        const allWords = DATA_SETS.flatMap(d => d.words);
-        const others = allWords.filter(w => w.id !== current.id);
-
-        others.sort((a, b) => getLevenshteinDistance(current.word, a.word) - getLevenshteinDistance(current.word, b.word));
-
-        const distractors = others.slice(0, 3);
-        const opts = [current, ...distractors].sort(() => Math.random() - 0.5);
+        const distractors = ALL_WORDS
+            .filter((word) => word.id !== current.id)
+            .map((word) => ({
+                word,
+                distance: getLevenshteinDistance(current.word, word.word),
+            }))
+            .sort((left, right) => left.distance - right.distance)
+            .slice(0, 3)
+            .map((item) => item.word);
+        const opts = shuffleArray([current, ...distractors]);
 
         setOptions(opts);
         setIsAnswered(false);
@@ -66,8 +69,8 @@ const ChoiceQuizUI = ({
     if (!current) return null;
 
     return (
-        <div className="flex flex-col h-full w-full bg-white dark:bg-[#121212] p-6 md:p-10 overflow-hidden">
-            <div className="flex justify-between items-center mb-6 text-xs font-bold tracking-widest text-zinc-500 dark:text-zinc-400 uppercase">
+        <div className="vm-page md:!p-10 overflow-hidden">
+            <div className="flex flex-wrap justify-between items-center gap-3 mb-6 text-xs font-bold tracking-widest text-zinc-500 dark:text-zinc-400 uppercase">
                 <span>단어퀴즈</span>
                 <div className="flex items-center gap-4">
                     <span>{remainingCount} 남음</span>
@@ -94,7 +97,7 @@ const ChoiceQuizUI = ({
 
                 <div className="w-full max-w-2xl grid grid-cols-1 gap-3">
                     {options.map((opt, idx) => {
-                        let btnStyle = 'bg-white hover:bg-zinc-50 dark:bg-[#181818] dark:hover:bg-[#202020] text-zinc-700 dark:text-zinc-200 border-zinc-200 dark:border-[#282828] shadow-sm dark:shadow-none';
+                        let btnStyle = 'vm-card-soft hover:bg-zinc-50 dark:hover:bg-[#202020] text-zinc-700 dark:text-zinc-200 border-zinc-200 dark:border-[#282828]';
                         if (isAnswered) {
                             if (opt.id === current.id) btnStyle = 'bg-[#1db954] text-white dark:text-black border-[#1ed760] ring-2 ring-[#1db954]/40 shadow-[0_0_15px_rgba(29,185,84,0.35)]';
                             else if (opt.id === selectedId) btnStyle = 'bg-red-100 dark:bg-red-900/50 text-red-600 dark:text-red-400 border-red-200 dark:border-red-800';
@@ -106,7 +109,7 @@ const ChoiceQuizUI = ({
                                 key={opt.id}
                                 disabled={isAnswered}
                                 onClick={() => handleAnswer(opt.id)}
-                                className={`w-full p-4 border transition-all duration-200 flex items-center gap-4 text-left ${btnStyle}`}
+                                className={`w-full p-4 border transition-all duration-200 flex items-center gap-4 text-left rounded-xl ${btnStyle}`}
                             >
                                 <span className={`flex items-center justify-center w-6 h-6 text-xs font-bold rounded-sm ${isAnswered && opt.id === current.id ? 'bg-white text-[#1db954]' : 'bg-zinc-100 dark:bg-[#2a2a2a] text-zinc-500 dark:text-zinc-400'}`}>
                                     {idx + 1}
@@ -119,12 +122,12 @@ const ChoiceQuizUI = ({
             </div>
 
             {isAnswered && (
-                <div className="w-full max-w-2xl mx-auto mt-4 animate-fade-in flex gap-4 items-center bg-zinc-50 dark:bg-zinc-900/80 p-4 border border-zinc-200 dark:border-zinc-700">
+                <div className="w-full max-w-2xl mx-auto mt-4 animate-fade-in flex flex-col sm:flex-row gap-4 items-stretch sm:items-center vm-card-soft p-4 border-zinc-200 dark:border-zinc-700">
                     <div className="flex-1">
                         <div className="text-xs text-zinc-500 font-bold uppercase mb-1">어원</div>
                         <div className="text-sm text-zinc-700 dark:text-zinc-300">{current.etymo}</div>
                     </div>
-                    <button onClick={handleNext} className="bg-zinc-900 dark:bg-white text-white dark:text-black p-3 hover:scale-110 transition-transform shadow-lg">
+                    <button onClick={handleNext} className="bg-zinc-900 dark:bg-white text-white dark:text-black p-3 rounded-xl hover:scale-105 transition-transform shadow-lg self-end sm:self-auto">
                         <SkipForward size={24} className="fill-white dark:fill-black" />
                     </button>
                 </div>

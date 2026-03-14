@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { FileCheck } from 'lucide-react';
 import type { Word } from '../data/types';
+import useTestInputController from '../hooks/useTestInputController';
 
 interface TestModeUIProps {
     words: Word[];
@@ -12,147 +13,35 @@ type TestDirection = 'EN_TO_KR' | 'KR_TO_EN';
 
 const ITEM_HEIGHT = 112; // h-28 = 7rem = 112px
 
-const TestModeUI: React.FC<TestModeUIProps> = ({ words, onComplete, onQuit }) => {
+const TestModeUI = ({ words, onComplete, onQuit }: TestModeUIProps) => {
     const [step, setStep] = useState<'CONFIG' | 'TEST'>('CONFIG');
     const [direction, setDirection] = useState<TestDirection>('EN_TO_KR');
-    const [answers, setAnswers] = useState<Record<string, string>>({});
-    const [currentIndex, setCurrentIndex] = useState(0);
-    const containerRef = useRef<HTMLDivElement>(null);
-    const itemRefs = useRef<(HTMLDivElement | null)[]>([]); // Keep this for legacy or fallback
     const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
+    const {
+        answers,
+        currentIndex,
+        setCurrentIndex,
+        handleInputChange,
+        handleKeyDown,
+        handleSubmit,
+        handleWheel,
+    } = useTestInputController({
+        words,
+        step,
+        direction,
+        inputRefs,
+        onComplete,
+    });
 
-    // 스크롤 중앙 정렬 및 오토 포커스 로직
     useEffect(() => {
-        if (step === 'TEST') {
-            // 2. 입력창 포커스 (약간의 지연을 주어 부드럽게 처리)
-            // requestAnimationFrame을 사용하여 렌더링 직후 실행 보장
-            requestAnimationFrame(() => {
-                const input = inputRefs.current[currentIndex];
-                input?.focus();
-            });
-        }
-    }, [currentIndex, step, words]);
-
-    // 마우스 휠 이벤트 핸들러
-    const lastWheelTime = useRef(0);
-    const handleWheel = (e: React.WheelEvent) => {
-        const now = Date.now();
-        // 너무 빠른 스크롤 방지 (Throttle: 50ms)
-        if (now - lastWheelTime.current < 50) return;
-        
-        if (e.deltaY > 0) {
-            // 아래로 스크롤 -> 다음 문제
-            if (currentIndex < words.length - 1) {
-                setCurrentIndex(prev => prev + 1);
-                lastWheelTime.current = now;
-            }
-        } else if (e.deltaY < 0) {
-            // 위로 스크롤 -> 이전 문제
-            if (currentIndex > 0) {
-                setCurrentIndex(prev => prev - 1);
-                lastWheelTime.current = now;
-            }
-        }
-    };
-
-    // 입력 처리
-    const handleInputChange = (value: string) => {
-        setAnswers(prev => ({
-            ...prev,
-            [words[currentIndex].id]: value
-        }));
-    };
-
-    // 다음 문제로 이동
-    const handleNext = () => {
-        if (currentIndex < words.length - 1) {
-            setCurrentIndex(prev => prev + 1);
-        } else {
-            // 마지막 문제인 경우 제출 확인
-            if (window.confirm('모든 문제를 풀었습니다. 제출하시겠습니까?')) {
-                handleSubmit();
-            }
-        }
-    };
-
-    const handleKeyDown = (e: React.KeyboardEvent) => {
-        if (e.key === 'Enter') {
-            e.preventDefault(); // 기본 줄바꿈 방지
-            handleNext();
-        } else if (e.key === 'ArrowUp') {
-            e.preventDefault();
-            if (currentIndex > 0) setCurrentIndex(prev => prev - 1);
-        } else if (e.key === 'ArrowDown') {
-            e.preventDefault();
-            if (currentIndex < words.length - 1) setCurrentIndex(prev => prev + 1);
-        }
-    };
-
-    const handleSubmit = () => {
-        const results = words.map(word => {
-            const userAnswer = (answers[word.id] || '').trim().toLowerCase();
-            let isCorrect = false;
-
-            if (direction === 'EN_TO_KR') {
-                // 단어(EN) 보고 뜻(KR) 맞추기
-                // 정답 체크 로직 개선:
-                // 1. (명), (동) 등의 품사 태그 제거
-                // 2. 쉼표(,) 등으로 구분된 여러 뜻 각각 비교
-                // 3. 공백 제거 후 비교
-                
-                // 전처리 함수: 괄호 안의 내용 제거, 공백 제거
-                const normalize = (str: string) => str.replace(/\([^)]*\)/g, '').replace(/[\s\.]/g, '').toLowerCase();
-                const cleanUserAnswer = normalize(userAnswer);
-
-                if (cleanUserAnswer.length > 0) {
-                    // definitions 배열의 각 항목에 대해 쉼표로 분리하여 모든 가능한 정답군 생성
-                    const validAnswers = word.definitions.flatMap(def => 
-                        def.replace(/\([^)]*\)/g, '') // 괄호 제거
-                           .split(/[,/]/)             // 쉼표나 슬래시로 구분
-                           .map(d => normalize(d))    // 정규화
-                    ).filter(d => d.length > 0);      // 빈 문자열 제거
-
-                    // 하나라도 일치하면 정답
-                    isCorrect = validAnswers.some(ans => cleanUserAnswer === ans || cleanUserAnswer.includes(ans) && ans.length > 1);
-                    // includes 조건 추가: "거의" 입력 시 "거의, 가까운" 중 "거의"와 일치.
-                    // 단, 너무 짧은 단어 매칭 오작동 방지 위해 길이 체크, 하지만 === 체크가 있으므로 includes는 보조적.
-                    // 사용자가 "거의"라고 쳤는데 정답 데이터가 "거의없는" 이라면? 
-                    // 사용자가 "거의"라고 쳤는데 데이터가 "거의"라면 === 로 통과.
-                    // 사용자가 "임원"이라 쳤는데 데이터가 "경영진, 임원" -> split되어 "임원" 존재 -> 통과.
-                    // includes는 사용자가 "경영진"을 "경영진들"이라고 썼을 때 등을 위한 것인데,
-                    // 반대로 정답이 "run"인데 사용자가 "running"이라고 쓴 경우? (한글 뜻 맞추기니까 이건 아님)
-                    // 사용자가 "가까운"이라고 썼는데 정답이 "가까운, 친밀한" -> split되어 "가까운" 존재 -> 통과.
-                    
-                    // 정확히 일치하는 것을 우선으로 하되, 사용자의 입력이 정답의 일부이거나 정답이 사용자 입력의 일부인 경우도?
-                    // 사용자의 요구사항: "(명)거의, 가까운" -> "거의" 정답 인정.
-                    // 위 로직(split)으로 "거의"가 validAnswers에 포함되므로 === 비교로 충분함.
-                    isCorrect = validAnswers.some(ans => cleanUserAnswer === ans);
-                }
-            } else {
-                // 뜻(KR) 보고 단어(EN) 맞추기
-                isCorrect = userAnswer === word.word.toLowerCase();
-            }
-            return { wordId: word.id, isCorrect };
-        });
-        
-        // 점수 저장 (App.tsx에서 로컬스토리지를 읽을 수 있도록 저장)
-        // 현재 words가 속한 dayId를 알기 어려우므로(props에 없음), 여기서는 순수 기능만 수행하고, 
-        // App.tsx나 상위 컴포넌트에서 결과 처리 시 점수를 저장하도록 하는게 맞음.
-        // 하지만 요구사항에 메뉴에서 점수를 보여달라고 했으므로, 
-        // 편의상 여기서 저장하거나 onComplete 이후 상위에서 처리해야 함.
-        // QuizSessionManager가 dataSetId를 가지고 있으므로 거기서 처리하는게 좋지만,
-        // QuizSessionManager 코드를 수정하지 않고 처리하려면 여기서 저장해야하는데 dayId가 없음.
-        // 일단 로컬스토리지 저장은 onComplete 이후 상위(QuizSessionManager -> handleQuizFinish -> App)에서 처리되는게 정석.
-        // 다만 App.tsx의 handleQuizFinish에서 "Test Mode"일 경우 점수를 로컬스토리지에 저장하는 로직을 추가해야 함.
-        // 지금은 우선 UI 구현에 집중.
-
-        onComplete(results, direction);
-    };
+        if (step !== 'CONFIG') return;
+        inputRefs.current = [];
+    }, [step]);
 
     // 설정 화면 (Step 1)
     if (step === 'CONFIG') {
         return (
-            <div className="flex flex-col items-center justify-center h-full p-8 bg-slate-50 dark:bg-zinc-900 animate-in fade-in zoom-in-95 duration-200">
+            <div className="vm-page flex-col items-center justify-center animate-in fade-in zoom-in-95 duration-200">
                 <div className="max-w-md w-full text-center space-y-8">
                     <div className="w-16 h-16 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-sm">
                         <FileCheck size={32} />
@@ -168,7 +57,7 @@ const TestModeUI: React.FC<TestModeUIProps> = ({ words, onComplete, onQuit }) =>
                     <div className="grid grid-cols-1 gap-4 mt-8">
                         <button
                             onClick={() => { setDirection('EN_TO_KR'); setStep('TEST'); }}
-                            className="p-6 rounded-xl border-2 border-slate-200 dark:border-zinc-700 hover:border-accent dark:hover:border-accent bg-white dark:bg-zinc-800 transition-all text-left group hover:shadow-lg hover:-translate-y-1"
+                            className="p-6 rounded-xl border-2 border-slate-200 dark:border-zinc-700 hover:border-accent dark:hover:border-accent vm-card transition-all text-left group hover:shadow-lg hover:-translate-y-1"
                         >
                             <span className="block text-xs font-bold text-accent mb-1 tracking-wider">TYPE 1</span>
                             <span className="text-lg font-bold text-text-primary dark:text-white group-hover:text-accent transition-colors">
@@ -178,7 +67,7 @@ const TestModeUI: React.FC<TestModeUIProps> = ({ words, onComplete, onQuit }) =>
                         </button>
                         <button
                             onClick={() => { setDirection('KR_TO_EN'); setStep('TEST'); }}
-                            className="p-6 rounded-xl border-2 border-slate-200 dark:border-zinc-700 hover:border-accent dark:hover:border-accent bg-white dark:bg-zinc-800 transition-all text-left group hover:shadow-lg hover:-translate-y-1"
+                            className="p-6 rounded-xl border-2 border-slate-200 dark:border-zinc-700 hover:border-accent dark:hover:border-accent vm-card transition-all text-left group hover:shadow-lg hover:-translate-y-1"
                         >
                             <span className="block text-xs font-bold text-accent mb-1 tracking-wider">TYPE 2</span>
                             <span className="text-lg font-bold text-text-primary dark:text-white group-hover:text-accent transition-colors">
@@ -198,13 +87,13 @@ const TestModeUI: React.FC<TestModeUIProps> = ({ words, onComplete, onQuit }) =>
 
     // 시험 화면 (Step 2)
     return (
-        <div className="h-full flex flex-col bg-slate-50 dark:bg-zinc-900 relative">
+        <div className="h-full flex flex-col bg-slate-50 dark:bg-zinc-950 relative">
             {/* 상단 프로그레스 */}
-            <div className="h-14 flex items-center justify-between px-6 bg-white dark:bg-zinc-900 border-b border-slate-200 dark:border-zinc-800 z-10 shrink-0 shadow-sm">
+            <div className="h-14 flex items-center justify-between gap-3 px-4 md:px-6 bg-white dark:bg-zinc-900 border-b border-slate-200 dark:border-zinc-800 z-10 shrink-0 shadow-sm">
                 <div className="text-sm font-bold text-text-secondary dark:text-zinc-400 font-mono">
                     Problem <span className="text-accent text-lg">{currentIndex + 1}</span> <span className="text-slate-300 mx-1">/</span> {words.length}
                 </div>
-                <div className="px-3 py-1 rounded-full bg-slate-100 dark:bg-zinc-800 text-xs font-bold text-text-secondary dark:text-zinc-400 border border-slate-200 dark:border-zinc-700">
+                <div className="hidden sm:block px-3 py-1 rounded-full bg-slate-100 dark:bg-zinc-800 text-xs font-bold text-text-secondary dark:text-zinc-400 border border-slate-200 dark:border-zinc-700">
                     {direction === 'EN_TO_KR' ? '단어 ➔ 뜻' : '뜻 ➔ 단어'}
                 </div>
                 <button
@@ -233,7 +122,6 @@ const TestModeUI: React.FC<TestModeUIProps> = ({ words, onComplete, onQuit }) =>
 
                 {/* 스크롤 가능한 리스트 컨테이너 */}
                 <div 
-                    ref={containerRef}
                     className="w-full max-w-4xl px-4 h-full relative z-10 transition-transform duration-300 ease-out will-change-transform"
                     style={{ 
                         // 중앙 정렬을 위한 위치 계산
@@ -262,7 +150,6 @@ const TestModeUI: React.FC<TestModeUIProps> = ({ words, onComplete, onQuit }) =>
                                 <div
                                     key={word.id}
                                     style={{ height: ITEM_HEIGHT }}
-                                    ref={(el) => { itemRefs.current[index] = el; }}
                                     onClick={(e) => {
                                         e.stopPropagation();
                                         setCurrentIndex(index);
@@ -288,7 +175,9 @@ const TestModeUI: React.FC<TestModeUIProps> = ({ words, onComplete, onQuit }) =>
                                     {/* 입력 영역 (우측) */}
                                     <div className="flex-1 pl-10 h-16 flex flex-col justify-center items-start">
                                         <input
-                                            ref={el => inputRefs.current[index] = el}
+                                            ref={(el) => {
+                                                inputRefs.current[index] = el;
+                                            }}
                                             id={`input-${word.id}`}
                                             type="text"
                                             value={answers[word.id] || ''}

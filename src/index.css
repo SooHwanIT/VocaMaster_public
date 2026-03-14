@@ -125,3 +125,125 @@ h1, h2, h3, h4, h5, h6 {
 .rotate-y-180 {
   transform: rotateY(180deg);
 }
+
+@keyframes vm-page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.995);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes vm-progress-indeterminate {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(240%);
+  }
+}
+
+@keyframes vm-skeleton {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.vm-transition-enter {
+  animation: vm-page-enter 200ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.vm-progress-indeterminate {
+  animation: vm-progress-indeterminate 1.25s ease-in-out infinite;
+  will-change: transform;
+}
+
+.vm-skeleton-shimmer {
+  background: linear-gradient(90deg, rgba(148, 163, 184, 0.12) 25%, rgba(148, 163, 184, 0.24) 37%, rgba(148, 163, 184, 0.12) 63%);
+  background-size: 400% 100%;
+  animation: vm-skeleton 1.25s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vm-transition-enter,
+  .vm-progress-indeterminate,
+  .vm-skeleton-shimmer {
+    animation: none !important;
+  }
+}
+
+@layer components {
+  .vm-page {
+    @apply flex flex-col h-full w-full overflow-y-auto bg-slate-50 dark:bg-zinc-950 p-4 md:p-8;
+  }
+
+  .vm-page-header {
+    @apply mb-8 md:mb-10;
+  }
+
+  .vm-page-title {
+    @apply text-3xl md:text-4xl font-black tracking-tight text-slate-800 dark:text-white;
+  }
+
+  .vm-page-subtitle {
+    @apply text-slate-500 dark:text-zinc-400 mt-1;
+  }
+
+  .vm-card {
+    @apply bg-white dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-2xl shadow-sm;
+  }
+
+  .vm-card-soft {
+    @apply bg-white dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-xl shadow-sm;
+  }
+
+  .vm-accent-text {
+    @apply text-violet-500 dark:text-violet-400;
+  }
+
+  .vm-accent-soft-bg {
+    @apply bg-violet-50 dark:bg-violet-900/20;
+  }
+
+  .vm-section {
+    @apply space-y-6;
+  }
+
+  .vm-btn-primary {
+    @apply h-11 px-5 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-semibold transition-all hover:opacity-90 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed;
+  }
+
+  .vm-btn-secondary {
+    @apply h-11 px-5 rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-slate-700 dark:text-zinc-200 font-semibold transition-all hover:bg-slate-50 dark:hover:bg-zinc-800 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed;
+  }
+
+  .vm-btn-ghost {
+    @apply h-10 px-4 rounded-xl text-slate-600 dark:text-zinc-300 font-semibold transition-colors hover:bg-slate-100 dark:hover:bg-zinc-800;
+  }
+
+  .vm-btn-inverse {
+    @apply h-11 px-5 rounded-xl bg-white text-black font-semibold transition-all hover:bg-white/90 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed;
+  }
+
+  .vm-input {
+    @apply w-full h-11 rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 text-sm text-slate-900 dark:text-zinc-100 placeholder:text-slate-400 dark:placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-violet-500/40 focus:border-violet-500;
+  }
+
+  .vm-textarea {
+    @apply w-full rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2 text-sm text-slate-900 dark:text-zinc-100 placeholder:text-slate-400 dark:placeholder:text-zinc-500 resize-none focus:outline-none focus:ring-2 focus:ring-violet-500/40 focus:border-violet-500;
+  }
+
+  .vm-input-dark {
+    @apply w-full h-11 rounded-xl border border-white/15 bg-white/[0.04] px-3 text-sm text-white placeholder:text-white/35 focus:outline-none focus:ring-2 focus:ring-white/20 focus:border-white/30;
+  }
+
+  .vm-textarea-dark {
+    @apply w-full rounded-xl border border-white/15 bg-white/[0.04] px-3 py-2 text-sm text-white placeholder:text-white/35 resize-none focus:outline-none focus:ring-2 focus:ring-white/20 focus:border-white/30;
+  }
+}

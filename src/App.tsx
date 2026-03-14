@@ -1,7 +1,9 @@
 ﻿import React, { useCallback, useEffect, useState } from 'react';
-import { Book, BookOpen, Home, Keyboard, Trophy, X, User as UserIcon, BarChart, Bookmark, Settings, History, Gamepad2, FileCheck, Menu, Play, ChevronRight } from 'lucide-react';
+import { AlertTriangle, Book, BookOpen, Home, Keyboard, Trophy, X, User as UserIcon, BarChart, Bookmark, Settings, History, Gamepad2, FileCheck, Menu, Play, ChevronRight, NotebookPen, RefreshCw } from 'lucide-react';
 
-import { saveStudySession } from './db';
+import { flushSyncQueue, getSyncStatusSnapshot, saveStudySession, subscribeToSyncStatus, type SyncStatusSnapshot } from './db';
+import { useUserLevel } from './hooks/useUserLevel';
+import LevelUpModal from './components/LevelUpModal';
 import { STORAGE_KEY } from './app/constants';
 import { appReducer, getInitialState } from './app/state';
 import { clearResumeState, loadResumeState, saveResumeState } from './app/storage';
@@ -24,6 +26,14 @@ import TestSessionManager from './components/TestSessionManager';
 import ResultView from './components/ResultView';
 import ArcadeView from './components/ArcadeView';
 import PlayerView from './components/PlayerView';
+import AuthGate from './components/AuthGate';
+import WrongNotesView from './components/WrongNotesView';
+import { TransitionSurface } from './components/TransitionUI';
+import { getTestScorePercent } from './app/utils';
+
+type TabId = 'DASHBOARD' | 'WORD_STUDY' | 'BOOKMARKS' | 'STATS' | 'ARCADE' | 'HISTORY' | 'WRONG_NOTES' | 'SETTINGS' | 'PROFILE';
+const TAB_IDS: TabId[] = ['DASHBOARD', 'WORD_STUDY', 'BOOKMARKS', 'STATS', 'ARCADE', 'HISTORY', 'WRONG_NOTES', 'SETTINGS', 'PROFILE'];
+const ROUTABLE_MODES: AppMode[] = ['WORD_LIST', 'CHOICE', 'WRITE', 'PROGRESS', 'TEST', 'PLAYER'];
 
 const App = () => {
     const [state, dispatch] = React.useReducer(appReducer, undefined, getInitialState);
@@ -32,8 +42,12 @@ const App = () => {
     const [resumeState, setResumeState] = useState<ResumeState | null>(() => loadResumeState());
     const [exitConfirm, setExitConfirm] = useState<{ mode: AppMode; dayId: string | null } | null>(null);
 
-    const [activeTab, setActiveTab] = useState<'DASHBOARD' | 'WORD_STUDY' | 'BOOKMARKS' | 'STATS' | 'ARCADE' | 'HISTORY' | 'SETTINGS' | 'PROFILE'>('DASHBOARD');
+    const { levelUpInfo, clearLevelUp } = useUserLevel();
+
+    const [activeTab, setActiveTab] = useState<TabId>('DASHBOARD');
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+    const [syncStatus, setSyncStatus] = useState<SyncStatusSnapshot>(() => getSyncStatusSnapshot());
+    const isApplyingUrlRef = React.useRef(false);
 
     useEffect(() => {
         setIsMobileMenuOpen(false);
@@ -60,6 +74,86 @@ const App = () => {
             setResumeState(loadResumeState());
         }
     }, [state.view]);
+
+    useEffect(() => subscribeToSyncStatus(setSyncStatus), []);
+
+    const applyUrlState = useCallback(() => {
+        if (typeof window === 'undefined') return;
+
+        isApplyingUrlRef.current = true;
+        const params = new URLSearchParams(window.location.search);
+
+        const pageParam = params.get('page');
+        const tabParam = params.get('tab');
+        const modeParam = params.get('mode') as AppMode | null;
+        const dayParam = params.get('day');
+        const pickerParam = params.get('picker');
+
+        if ((pageParam === 'learn' || pageParam === 'result') && modeParam && ROUTABLE_MODES.includes(modeParam)) {
+            if (dayParam) {
+                setActiveTab('WORD_STUDY');
+                setLastWordStudyDayId(dayParam);
+                setModePickerDayId(null);
+                dispatch({ type: 'START_DAY_MODE', dayId: dayParam, mode: modeParam });
+            } else {
+                dispatch({ type: 'BACK_DASHBOARD' });
+                setActiveTab('WORD_STUDY');
+            }
+        } else {
+            const resolvedTab = (tabParam && TAB_IDS.includes(tabParam as TabId)
+                ? tabParam
+                : 'DASHBOARD') as TabId;
+
+            dispatch({ type: 'BACK_DASHBOARD' });
+            setActiveTab(resolvedTab);
+
+            if (resolvedTab === 'WORD_STUDY' && pickerParam) {
+                setModePickerDayId(pickerParam);
+                setLastWordStudyDayId(pickerParam);
+            } else {
+                setModePickerDayId(null);
+            }
+        }
+
+        window.setTimeout(() => {
+            isApplyingUrlRef.current = false;
+        }, 0);
+    }, [dispatch]);
+
+    useEffect(() => {
+        applyUrlState();
+        window.addEventListener('popstate', applyUrlState);
+        return () => window.removeEventListener('popstate', applyUrlState);
+    }, [applyUrlState]);
+
+    useEffect(() => {
+        if (typeof window === 'undefined' || isApplyingUrlRef.current) return;
+
+        const params = new URLSearchParams();
+
+        if (state.view === 'QUIZ' && state.dayId && ROUTABLE_MODES.includes(state.mode)) {
+            params.set('page', 'learn');
+            params.set('mode', state.mode);
+            params.set('day', state.dayId);
+        } else if (state.view === 'RESULT' && state.dayId && ROUTABLE_MODES.includes(state.mode)) {
+            params.set('page', 'result');
+            params.set('mode', state.mode);
+            params.set('day', state.dayId);
+        } else {
+            params.set('page', 'tab');
+            params.set('tab', activeTab);
+            if (activeTab === 'WORD_STUDY' && modePickerDayId) {
+                params.set('picker', modePickerDayId);
+            }
+        }
+
+        const nextSearch = params.toString();
+        const currentSearch = window.location.search.replace(/^\?/, '');
+        if (nextSearch === currentSearch) return;
+
+        const nextUrl = `${window.location.pathname}?${nextSearch}`;
+        window.history.pushState({}, '', nextUrl);
+    }, [activeTab, modePickerDayId, state.dayId, state.mode, state.view]);
 
 
     const openModePicker = useCallback((id: string) => {
@@ -104,7 +198,7 @@ const App = () => {
             setExitConfirm({ mode: state.mode, dayId: state.dayId });
             return;
         }
-        navigateBackToWordStudy(true);
+        navigateBackToWordStudy(!forceImmediate);
     };
 
     const handleExitSave = () => {
@@ -149,11 +243,18 @@ const App = () => {
                 totalCount: stats.totalWordCount,
                 correctCount: stats.totalTries - (stats.wrongAttempts || 0),
                 wrongCount: stats.wrongAttempts || 0, 
-                wrongWords: stats.wrongWords 
+                wrongWords: stats.wrongWords,
+                testType: stats.testType,
+                testResults: stats.testResults,
+                sessionWords: stats.sessionWords,
             });
             
             if (state.mode === 'TEST') {
-                const currentScore = Math.round(((stats.totalTries - (stats.wrongAttempts || 0)) / stats.totalWordCount) * 100);
+                const currentScore = getTestScorePercent(
+                    stats.totalTries,
+                    stats.wrongAttempts || 0,
+                    stats.totalWordCount
+                );
                 const key = `best_score_test_${state.dayId}`;
                 const bestScore = parseInt(localStorage.getItem(key) || '0', 10);
                 if (currentScore > bestScore) {
@@ -179,6 +280,7 @@ const App = () => {
         { id: 'STATS', icon: BarChart, label: '통계', color: 'text-orange-500' },
         { id: 'ARCADE', icon: Gamepad2, label: '아케이드', color: 'text-purple-500' },
         { id: 'HISTORY', icon: History, label: '학습 기록', color: 'text-blue-500' },
+        { id: 'WRONG_NOTES', icon: NotebookPen, label: '오답 노트', color: 'text-red-500' },
         { id: 'SETTINGS', icon: Settings, label: '설정', color: 'text-gray-500' },
         { id: 'PROFILE', icon: UserIcon, label: '프로필', color: 'text-purple-500' },
     ];
@@ -189,7 +291,7 @@ const App = () => {
                 <button
                     key={item.id}
                     onClick={() => {
-                        setActiveTab(item.id as any);
+                        setActiveTab(item.id as TabId);
                         if (isMobile) setIsMobileMenuOpen(false);
                     }}
                     className={`w-full flex items-center ${isMobile ? 'justify-start px-4' : 'justify-center md:justify-start px-0 md:px-4'} py-3 rounded-xl text-sm font-medium transition-colors ${
@@ -215,16 +317,43 @@ const App = () => {
         state.mode === 'PLAYER' ||
         state.mode === 'TEST';
     const shouldShowSidebar = !isActiveLearning;
+    const pageTransitionKey = state.view === 'DASHBOARD'
+        ? `tab:${activeTab}`
+        : `${state.view}:${state.mode}:${state.dayId ?? 'none'}`;
 
     return (
+        <AuthGate>
         <div className="flex flex-col h-screen w-screen overflow-hidden font-sans select-none text-text-primary relative bg-slate-50">
-            <div className="h-10 px-4 flex items-center justify-between z-50 bg-slate-100 dark:bg-zinc-900 border-b border-slate-200 dark:border-zinc-800">
-                <div className="flex items-center gap-2 text-sm font-bold tracking-tight text-slate-900 dark:text-white">
-                    <div className="w-2.5 h-2.5 bg-accent" />
-                    <span>VocaMaster</span>
+            {syncStatus.phase === 'error' && (
+                <div className="absolute top-3 left-1/2 -translate-x-1/2 z-[120] w-[min(92vw,720px)]">
+                    <div className="vm-card-soft px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-amber-200 dark:border-amber-900/40 bg-amber-50/95 dark:bg-zinc-900/95 backdrop-blur">
+                        <div className="flex items-start gap-3">
+                            <AlertTriangle size={18} className="text-amber-500 shrink-0 mt-0.5" />
+                            <div>
+                                <div className="text-sm font-bold text-slate-800 dark:text-white">동기화에 실패했습니다</div>
+                                <div className="text-xs text-slate-500 dark:text-zinc-400">
+                                    {syncStatus.lastError ?? '잠시 후 자동으로 다시 시도합니다.'}
+                                </div>
+                            </div>
+                        </div>
+                        <button
+                            onClick={() => {
+                                void flushSyncQueue(true);
+                            }}
+                            className="vm-btn-secondary h-9 px-3 text-xs inline-flex items-center justify-center gap-2"
+                        >
+                            <RefreshCw size={14} /> 다시 시도
+                        </button>
+                    </div>
                 </div>
-            </div>
-
+            )}
+            {levelUpInfo && (
+                <LevelUpModal
+                    level={levelUpInfo.level}
+                    title={levelUpInfo.title}
+                    onClose={clearLevelUp}
+                />
+            )}
             <div className="flex flex-1 overflow-hidden relative z-10">
                 <div
                     className={`fixed inset-0 z-50 md:hidden flex transition-opacity duration-300 ${
@@ -240,8 +369,8 @@ const App = () => {
                             isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
                         }`}
                     >
-                             <div className="h-16 flex items-center px-6 gap-3 font-bold text-xl tracking-tighter text-text-primary dark:text-white">
-                                <Trophy className="text-accent shrink-0" /> <span>VocaMaster</span>
+                                      <div className="h-16 flex items-center px-6 gap-3 font-bold text-xl tracking-tighter text-text-primary dark:text-white">
+                                          <Trophy className="text-accent shrink-0" /> <span>Etyvoca</span>
                             </div>
                             {renderNav(true)}
                     </div>
@@ -266,7 +395,7 @@ const App = () => {
                     }`}
                 >
                     <div className="h-16 flex items-center px-6 gap-3 font-bold text-xl tracking-tighter text-text-primary dark:text-white shrink-0">
-                        <Trophy className="text-accent shrink-0" /> <span>VocaMaster</span>
+                        <Trophy className="text-accent shrink-0" /> <span>Etyvoca</span>
                     </div>
                     {renderNav()}
                     
@@ -284,97 +413,102 @@ const App = () => {
                 </div>
 
                 <main className="flex-1 overflow-hidden relative bg-slate-50 dark:bg-[#09090b]">
-                    {state.view === 'DASHBOARD' ? (
-                        <>
-                            {activeTab === 'DASHBOARD' && (
-                                <DashboardView />
-                            )}
-                            {activeTab === 'WORD_STUDY' && (
-                                <WordStudyView
-                                    onOpenModePicker={openModePicker}
-                                    resumeState={resumeState}
-                                    onResume={handleResume}
-                                />
-                            )}
-                            {activeTab === 'BOOKMARKS' && (
-                                <BookmarksView />
-                            )}
-                             {activeTab === 'STATS' && (
-                                <StatsView />
-                            )}
-                             {activeTab === 'HISTORY' && (
-                                <HistoryView />
-                            )}
-                            {activeTab === 'SETTINGS' && (
-                                <SettingsView
-                                    theme={state.theme ?? 'light'}
-                                    onThemeChange={(theme) => dispatch({ type: 'SET_THEME', theme })}
-                                />
-                            )}
-                            {activeTab === 'PROFILE' && (
-                                <ProfileView
-                                    theme={state.theme ?? 'light'}
-                                    onThemeChange={(theme) => dispatch({ type: 'SET_THEME', theme })}
-                                />
-                            )}
-                            {activeTab === 'ARCADE' && (
-                                <ArcadeView />
-                            )}
-                        </>
-                    ) : (
-                         <div className="absolute inset-0 z-20 bg-white dark:bg-[#09090b]">
-                            {state.mode === 'WORD_LIST' && state.dayId && (
-                                <WordListView 
-                                    dataSetId={state.dayId} 
-                                    onExit={requestExit} 
-                                />
-                            )}
-                            {state.mode === 'CHOICE' && state.dayId && (
-                                <QuizSessionManager
-                                    dataSetId={state.dayId}
-                                    mode="CHOICE"
-                                    onFinish={handleQuizFinish}
-                                    onQuit={() => requestExit(true)}
-                                    renderQuizUI={(props) => <ChoiceQuizUI {...props} />}
-                                />
-                            )}
-                            {state.mode === 'WRITE' && state.dayId && (
-                                <QuizSessionManager
-                                    dataSetId={state.dayId}
-                                    mode="WRITE"
-                                    onFinish={handleQuizFinish} 
-                                    onQuit={() => requestExit(true)}
-                                    renderQuizUI={(props) => <WriteQuizUI {...props} />}
-                                />
-                            )}
-                            {state.mode === 'TEST' && state.dayId && (
-                                <TestSessionManager
-                                    dataSetId={state.dayId}
-                                    onFinish={handleQuizFinish}
-                                    onQuit={requestExit}
-                                />
-                            )}
-                             {state.mode === 'PROGRESS' && state.dayId && (
-                                <ProgressView dataSetId={state.dayId} onExit={requestExit} />
-                            )}
-                            
-                            {state.mode === 'PLAYER' && state.dayId && (
-                                <PlayerView dataSetId={state.dayId} onExit={requestExit} />
-                            )}
+                    <TransitionSurface transitionKey={pageTransitionKey} className="h-full">
+                        {state.view === 'DASHBOARD' ? (
+                            <>
+                                {activeTab === 'DASHBOARD' && (
+                                    <DashboardView />
+                                )}
+                                {activeTab === 'WORD_STUDY' && (
+                                    <WordStudyView
+                                        onOpenModePicker={openModePicker}
+                                        resumeState={resumeState}
+                                        onResume={handleResume}
+                                    />
+                                )}
+                                {activeTab === 'BOOKMARKS' && (
+                                    <BookmarksView />
+                                )}
+                                 {activeTab === 'STATS' && (
+                                    <StatsView />
+                                )}
+                                 {activeTab === 'HISTORY' && (
+                                    <HistoryView />
+                                )}
+                                {activeTab === 'WRONG_NOTES' && (
+                                    <WrongNotesView />
+                                )}
+                                {activeTab === 'SETTINGS' && (
+                                    <SettingsView
+                                        theme={state.theme ?? 'light'}
+                                        onThemeChange={(theme) => dispatch({ type: 'SET_THEME', theme })}
+                                    />
+                                )}
+                                {activeTab === 'PROFILE' && (
+                                    <ProfileView
+                                        theme={state.theme ?? 'light'}
+                                        onThemeChange={(theme) => dispatch({ type: 'SET_THEME', theme })}
+                                    />
+                                )}
+                                {activeTab === 'ARCADE' && (
+                                    <ArcadeView />
+                                )}
+                            </>
+                        ) : (
+                             <div className="absolute inset-0 z-20 bg-white dark:bg-[#09090b]">
+                                {state.mode === 'WORD_LIST' && state.dayId && (
+                                    <WordListView
+                                        dataSetId={state.dayId}
+                                        onExit={requestExit}
+                                    />
+                                )}
+                                {state.mode === 'CHOICE' && state.dayId && (
+                                    <QuizSessionManager
+                                        dataSetId={state.dayId}
+                                        mode="CHOICE"
+                                        onFinish={handleQuizFinish}
+                                        onQuit={() => requestExit(true)}
+                                        renderQuizUI={(props) => <ChoiceQuizUI {...props} />}
+                                    />
+                                )}
+                                {state.mode === 'WRITE' && state.dayId && (
+                                    <QuizSessionManager
+                                        dataSetId={state.dayId}
+                                        mode="WRITE"
+                                        onFinish={handleQuizFinish}
+                                        onQuit={() => requestExit(true)}
+                                        renderQuizUI={(props) => <WriteQuizUI {...props} />}
+                                    />
+                                )}
+                                {state.mode === 'TEST' && state.dayId && (
+                                    <TestSessionManager
+                                        dataSetId={state.dayId}
+                                        onFinish={handleQuizFinish}
+                                        onQuit={requestExit}
+                                    />
+                                )}
+                                 {state.mode === 'PROGRESS' && state.dayId && (
+                                    <ProgressView dataSetId={state.dayId} onExit={requestExit} />
+                                )}
 
-                            {state.mode === 'TODAY' && (
-                                <TodayStudyView onExit={requestExit} />
-                            )}
+                                {state.mode === 'PLAYER' && state.dayId && (
+                                    <PlayerView dataSetId={state.dayId} onExit={requestExit} />
+                                )}
 
-                            {state.view === 'RESULT' && state.lastStats && (
-                                <ResultView
-                                    stats={state.lastStats}
-                                    onRetry={handleRetryQuiz}
-                                    onDashboard={handleDashboard}
-                                />
-                            )}
-                        </div>
-                    )}
+                                {state.mode === 'TODAY' && (
+                                    <TodayStudyView onExit={requestExit} />
+                                )}
+
+                                {state.view === 'RESULT' && state.lastStats && (
+                                    <ResultView
+                                        stats={state.lastStats}
+                                        onRetry={handleRetryQuiz}
+                                        onDashboard={handleDashboard}
+                                    />
+                                )}
+                            </div>
+                        )}
+                    </TransitionSurface>
                     
                     {modePickerDayId && (
                         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
@@ -487,6 +621,7 @@ const App = () => {
                 </main>
             </div>
         </div>
+        </AuthGate>
     );
 };
 

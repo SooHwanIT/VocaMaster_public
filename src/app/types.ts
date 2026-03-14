@@ -12,6 +12,22 @@ export type MicSettings = {
     deviceId: string;
 };
 
+export type TestDirection = 'EN_TO_KR' | 'KR_TO_EN';
+
+export type TestResultEntry = {
+    wordId: string;
+    isCorrect: boolean;
+};
+
+export type SessionWordSnapshot = {
+    id: string;
+    word: string;
+    definitions: string[];
+    etymo: string;
+    examples: { text: string; korean: string }[];
+    dayId: string;
+};
+
 export type SessionStats = {
     totalTries: number;
     mostWrong: string;
@@ -21,6 +37,9 @@ export type SessionStats = {
     totalWordCount: number;
     wrongAttempts: number;
     wrongWords?: string[]; // 상세 오답 기록 (wordId 목록)
+    testType?: TestDirection;
+    testResults?: TestResultEntry[];
+    sessionWords?: SessionWordSnapshot[];
 };
 
 export type ResumeState = {

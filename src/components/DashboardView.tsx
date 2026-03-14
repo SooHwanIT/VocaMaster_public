@@ -1,11 +1,17 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { DATA_SETS } from '../data.ts';
 import { getModeProgress, getTodayStats } from '../db';
-import { Activity, Trophy, Zap, Clock, Calendar, CheckSquare, Edit3, BookOpen } from 'lucide-react';
+import { Activity, Trophy, Zap, Clock, Calendar, CheckSquare, Edit3, BookOpen, Flame } from 'lucide-react';
+import { useUserLevel } from '../hooks/useUserLevel';
+import LevelBadge from './LevelBadge';
+import XPProgressBar from './XPProgressBar';
+import { getRoundedPercentage } from '../app/utils';
 
 const DashboardView = () => {
     const currentHour = new Date().getHours();
     const greeting = currentHour < 12 ? '좋은 아침이에요' : currentHour < 18 ? '좋은 오후에요' : '좋은 저녁이에요';
+    
+    const { totalXP, currentLevel, streakDays, xpProgress } = useUserLevel();
     
     const [totalStats, setTotalStats] = useState({
         totalWords: 0,
@@ -57,25 +63,40 @@ const DashboardView = () => {
         loadStats();
     }, []);
 
-    const progressPercent = totalStats.totalWords > 0 
-        ? Math.round((totalStats.masteredWords / totalStats.totalWords) * 100) 
-        : 0;
+    const progressPercent = getRoundedPercentage(totalStats.masteredWords, totalStats.totalWords, 0);
 
     return (
-        <div className="flex flex-col h-full w-full p-4 md:p-8 overflow-y-auto bg-slate-50 dark:bg-[#09090b] transition-colors duration-300">
-            <div className="mb-8 md:mb-12">
-                <h2 className="text-3xl md:text-4xl font-extrabold text-text-primary dark:text-white tracking-tight font-sans mb-2 transition-colors">{greeting}</h2>
-                <p className="text-text-secondary dark:text-zinc-400">오늘도 영어 실력을 향상시켜보세요.</p>
+        <div className="vm-page transition-colors duration-300">
+            <div className="vm-page-header">
+                <div className="flex items-start justify-between gap-4 flex-wrap">
+                    <div>
+                        <h2 className="vm-page-title mb-2">{greeting}</h2>
+                        <p className="vm-page-subtitle">오늘도 영어 실력을 향상시켜보세요.</p>
+                    </div>
+                    {/* 레벨 + XP 컴팩트 패널 */}
+                    <div className="flex items-center gap-3 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-2xl px-4 py-3 shadow-sm min-w-[220px]">
+                        <LevelBadge level={currentLevel} size="sm" />
+                        <div className="flex-1 min-w-0">
+                            <XPProgressBar xpProgress={xpProgress} totalXP={totalXP} compact />
+                        </div>
+                        {streakDays > 1 && (
+                            <div className="flex items-center gap-1 text-orange-500 text-xs font-bold shrink-0">
+                                <Flame size={14} className="fill-orange-500" />
+                                {streakDays}
+                            </div>
+                        )}
+                    </div>
+                </div>
             </div>
 
             {/* Today's Stats Section */}
             <div className="mb-12">
                 <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-6 flex items-center gap-2">
-                    <Calendar className="text-blue-500" size={24} />
+                    <Calendar className="vm-accent-text" size={24} />
                     오늘의 학습
                 </h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                    <div className="bg-white dark:bg-zinc-900 p-5 rounded-2xl border border-slate-100 dark:border-zinc-800 shadow-sm flex items-center gap-4">
+                    <div className="vm-card p-5 flex items-center gap-4">
                         <div className="w-12 h-12 rounded-full bg-blue-50 dark:bg-blue-900/20 text-blue-500 flex items-center justify-center">
                             <BookOpen size={24} />
                         </div>
@@ -88,7 +109,7 @@ const DashboardView = () => {
                         </div>
                     </div>
                     
-                    <div className="bg-white dark:bg-zinc-900 p-5 rounded-2xl border border-slate-100 dark:border-zinc-800 shadow-sm flex items-center gap-4">
+                    <div className="vm-card p-5 flex items-center gap-4">
                         <div className="w-12 h-12 rounded-full bg-indigo-50 dark:bg-indigo-900/20 text-indigo-500 flex items-center justify-center">
                             <Activity size={24} />
                         </div>
@@ -101,7 +122,7 @@ const DashboardView = () => {
                         </div>
                     </div>
 
-                    <div className="bg-white dark:bg-zinc-900 p-5 rounded-2xl border border-slate-100 dark:border-zinc-800 shadow-sm flex items-center gap-4">
+                    <div className="vm-card p-5 flex items-center gap-4">
                         <div className="w-12 h-12 rounded-full bg-emerald-50 dark:bg-emerald-900/20 text-emerald-500 flex items-center justify-center">
                             <CheckSquare size={24} />
                         </div>
@@ -114,7 +135,7 @@ const DashboardView = () => {
                         </div>
                     </div>
 
-                    <div className="bg-white dark:bg-zinc-900 p-5 rounded-2xl border border-slate-100 dark:border-zinc-800 shadow-sm flex items-center gap-4">
+                    <div className="vm-card p-5 flex items-center gap-4">
                         <div className="w-12 h-12 rounded-full bg-rose-50 dark:bg-rose-900/20 text-rose-500 flex items-center justify-center">
                             <Edit3 size={24} />
                         </div>
@@ -130,11 +151,11 @@ const DashboardView = () => {
             </div>
 
             <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-6 flex items-center gap-2">
-                <Trophy className="text-amber-500" size={24} />
+                <Trophy className="vm-accent-text" size={24} />
                 전체 학습 현황
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
-                <div className="bg-white dark:bg-zinc-900 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-zinc-800 transition-colors group hover:shadow-md hover:-translate-y-1 duration-300">
+                <div className="vm-card p-6 transition-colors group hover:shadow-md hover:-translate-y-1 duration-300">
                     <div className="flex items-center gap-4 mb-4">
                         <div className="w-12 h-12 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 flex items-center justify-center group-hover:scale-110 transition-transform">
                             <Activity size={24} />
@@ -149,7 +170,7 @@ const DashboardView = () => {
                     </div>
                 </div>
 
-                <div className="bg-white dark:bg-zinc-900 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-zinc-800 transition-colors group hover:shadow-md hover:-translate-y-1 duration-300">
+                <div className="vm-card p-6 transition-colors group hover:shadow-md hover:-translate-y-1 duration-300">
                     <div className="flex items-center gap-4">
                         <div className="w-12 h-12 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center group-hover:scale-110 transition-transform">
                             <Zap size={24} />
@@ -163,7 +184,7 @@ const DashboardView = () => {
                     </div>
                 </div>
 
-                <div className="bg-white dark:bg-zinc-900 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-zinc-800 transition-colors group hover:shadow-md hover:-translate-y-1 duration-300">
+                <div className="vm-card p-6 transition-colors group hover:shadow-md hover:-translate-y-1 duration-300">
                     <div className="flex items-center gap-4">
                         <div className="w-12 h-12 rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 flex items-center justify-center group-hover:scale-110 transition-transform">
                             <Trophy size={24} />
@@ -179,7 +200,7 @@ const DashboardView = () => {
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 pb-8">
-                <div className="bg-white dark:bg-zinc-900 p-8 rounded-2xl shadow-sm border border-slate-100 dark:border-zinc-800 transition-colors">
+                <div className="vm-card p-8 transition-colors">
                     <h3 className="text-xl font-bold text-text-primary dark:text-white mb-6 flex items-center gap-2">
                         <Clock size={20} className="text-accent" />
                         학습 팁

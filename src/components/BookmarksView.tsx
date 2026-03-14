@@ -1,13 +1,21 @@
-import React from 'react';
-import { useLiveQuery } from 'dexie-react-hooks';
-import { db } from '../db';
+import { useCallback, useEffect, useState } from 'react';
+import { getBookmarks, removeBookmark, type Bookmark as BookmarkRecord } from '../db';
 import { DATA_SETS } from '../data.ts';
-import { Bookmark, Trash2, ArrowRight } from 'lucide-react';
+import { Bookmark, Trash2 } from 'lucide-react';
 
 const BookmarksView = () => {
-    const bookmarks = useLiveQuery(() => db.bookmarks.toArray());
+    const [bookmarks, setBookmarks] = useState<BookmarkRecord[] | null>(null);
 
-    if (!bookmarks) return <div className="p-8">Loading...</div>;
+    const loadBookmarks = useCallback(async () => {
+        const data = await getBookmarks();
+        setBookmarks(data);
+    }, []);
+
+    useEffect(() => {
+        loadBookmarks();
+    }, [loadBookmarks]);
+
+    if (!bookmarks) return <div className="vm-page text-slate-500 dark:text-zinc-400">불러오는 중...</div>;
 
     const bookmarkCount = bookmarks.length;
 
@@ -18,24 +26,25 @@ const BookmarksView = () => {
         return acc;
     }, {} as Record<string, string[]>);
 
-    const handleRemove = async (id: number) => {
-        await db.bookmarks.delete(id);
+    const handleRemove = async (wordId: string, dataSetId: string) => {
+        await removeBookmark(wordId, dataSetId);
+        await loadBookmarks();
     };
 
     return (
-        <div className="flex flex-col h-full bg-slate-50 dark:bg-zinc-950">
+        <div className="vm-page">
              {/* Header */}
-             <div className="p-4 md:p-8 pb-4 shrink-0">
-                <h1 className="text-3xl font-black text-slate-800 dark:text-white tracking-tight mb-2 flex items-center gap-3">
-                    <Bookmark className="text-emerald-500" size={32} />
+             <div className="vm-page-header shrink-0">
+                <h1 className="vm-page-title mb-2 flex items-center gap-3">
+                    <Bookmark className="vm-accent-text" size={32} />
                     나만의 단어장
                 </h1>
-                <p className="text-slate-500 dark:text-slate-400">
-                    <span className="font-bold text-emerald-600 dark:text-emerald-400">{bookmarkCount}개</span>의 단어가 저장되어 있습니다.
+                <p className="vm-page-subtitle">
+                    <span className="font-bold vm-accent-text">{bookmarkCount}개</span>의 단어가 저장되어 있습니다.
                 </p>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-8 pt-0 space-y-8">
+            <div className="flex-1 space-y-8">
                 {bookmarkCount === 0 ? (
                     <div className="flex flex-col items-center justify-center h-64 text-slate-400 border-2 border-dashed border-slate-200 dark:border-zinc-800 rounded-3xl">
                         <Bookmark size={48} className="mb-4 opacity-20" />
@@ -50,7 +59,7 @@ const BookmarksView = () => {
                         return (
                             <div key={dataSetId} className="space-y-4">
                                 <h3 className="text-lg font-bold text-slate-700 dark:text-slate-200 flex items-center gap-2">
-                                    <span className="w-1.5 h-6 bg-emerald-500 rounded-full" />
+                                    <span className="w-1.5 h-6 bg-accent rounded-full" />
                                     {dataSet.title}
                                     <span className="bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400 px-2 py-0.5 rounded text-xs">
                                         {wordIds.length}
@@ -65,7 +74,7 @@ const BookmarksView = () => {
                                         if (!word || !bookmarkEntry) return null;
 
                                         return (
-                                            <div key={wordId} className="group bg-white dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-xl p-4 shadow-sm hover:shadow-md transition-all flex items-start justify-between gap-4">
+                                            <div key={wordId} className="group vm-card-soft p-4 hover:shadow-md transition-all flex items-start justify-between gap-4">
                                                 <div className="flex-1">
                                                     <div className="flex items-baseline gap-3 mb-1">
                                                         <h4 className="text-xl font-bold text-slate-800 dark:text-white">{word.word}</h4>
@@ -79,16 +88,16 @@ const BookmarksView = () => {
                                                     {/* Example (Show on hover or always?) -> Let's show first one */}
                                                     <div className="mt-3 p-3 bg-slate-50 dark:bg-zinc-950 rounded-lg text-sm text-slate-600 dark:text-zinc-400">
                                                         <p className="mb-1 text-slate-800 dark:text-zinc-300">
-                                                            {word.examples[0].text.replace(/\[(.*?)\]/g, (match, p1) => p1)}
+                                                            {word.examples[0].text.replace(/\[(.*?)\]/g, (_match, p1) => p1)}
                                                         </p>
                                                         <p className="text-slate-400 text-xs">
-                                                            {word.examples[0].korean.replace(/\{(.*?)\}/g, (match, p1) => p1)}
+                                                            {word.examples[0].korean.replace(/\{(.*?)\}/g, (_match, p1) => p1)}
                                                         </p>
                                                     </div>
                                                 </div>
                                                 
                                                 <button 
-                                                    onClick={() => handleRemove(bookmarkEntry.id!)}
+                                                    onClick={() => handleRemove(bookmarkEntry.wordId, bookmarkEntry.dataSetId)}
                                                     className="shrink-0 p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
                                                     title="단어장에서 제거"
                                                 >

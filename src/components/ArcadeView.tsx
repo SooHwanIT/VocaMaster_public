@@ -1,8 +1,9 @@
 
-import React, { useState, useEffect } from 'react';
-import { DATA_SETS } from '../data.ts';
+import { useState, useEffect } from 'react';
+import { ALL_WORDS } from '../data/index';
 import type { Word } from '../data';
-import { Play, Grid, Type, Clock, ArrowLeft, RefreshCw, Trophy, X, Heart, Pause } from 'lucide-react';
+import { shuffleArray } from '../app/utils';
+import { Play, Grid, Type, Clock, ArrowLeft, RefreshCw, Trophy, Heart } from 'lucide-react';
 
 // --- Types ---
 type GameType = 'NONE' | 'MATCHING' | 'TYPING' | 'QUIZ';
@@ -19,7 +20,7 @@ interface CardItem {
 const MatchingGame = ({ onExit }: { onExit: () => void }) => {
     const [cards, setCards] = useState<CardItem[]>([]);
     const [selectedCards, setSelectedCards] = useState<CardItem[]>([]);
-    const [matches, setMatches] = useState(0);
+    const [, setMatches] = useState(0);
     const [lives, setLives] = useState(3);
     const [score, setScore] = useState(0);
     const [round, setRound] = useState(1);
@@ -33,8 +34,7 @@ const MatchingGame = ({ onExit }: { onExit: () => void }) => {
 
     const startRound = (roundNum: number, currentLives: number, currentScore: number) => {
         // 1.단어 데이터에서 랜덤으로 8개 뽑기
-        const allWords = DATA_SETS.flatMap(d => d.words);
-        const shuffledWords = [...allWords].sort(() => 0.5 - Math.random());
+        const shuffledWords = shuffleArray(ALL_WORDS);
         const selectedWords = shuffledWords.slice(0, 8);
 
         // 2. 카드 만들기 (영어 8개 + 한글 8개 = 16개)
@@ -45,7 +45,7 @@ const MatchingGame = ({ onExit }: { onExit: () => void }) => {
         });
 
         // 3. 카드 섞기
-        setCards(gameCards.sort(() => 0.5 - Math.random()));
+        setCards(shuffleArray(gameCards));
         setSelectedCards([]);
         setMatches(0);
         setLives(currentLives);
@@ -201,22 +201,22 @@ const ArcadeView = () => {
     // Menu Screen
     if (activeGame === 'NONE') {
         return (
-            <div className="flex flex-col h-full bg-slate-50 dark:bg-zinc-950 p-4 md:p-8 overflow-y-auto">
-                <div className="pb-8">
-                    <h1 className="text-3xl font-black text-slate-800 dark:text-white tracking-tight mb-2 flex items-center gap-3">
+            <div className="vm-page">
+                <div className="vm-page-header">
+                    <h1 className="vm-page-title mb-2 flex items-center gap-3">
                         <span className="bg-purple-500 text-white p-2 rounded-lg"><Grid size={24} /></span>
                         Arcade
                     </h1>
-                    <p className="text-slate-500 dark:text-slate-400">
+                    <p className="vm-page-subtitle">
                         지루한 암기는 그만! 게임으로 즐겁게 단어를 학습하세요.
                     </p>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div className="grid grid-cols-[repeat(auto-fit,minmax(240px,1fr))] gap-6">
                     {/* Game Card 1: Speed Match */}
                     <button 
                         onClick={() => setActiveGame('MATCHING')}
-                        className="group relative bg-white dark:bg-zinc-900 rounded-2xl border border-slate-200 dark:border-zinc-800 p-6 text-left hover:border-blue-500 dark:hover:border-blue-500 hover:shadow-xl transition-all duration-300"
+                        className="group relative vm-card p-6 text-left hover:border-blue-500 dark:hover:border-blue-500 hover:shadow-xl transition-all duration-300"
                     >
                         <div className="absolute top-4 right-4 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 px-3 py-1 rounded-full text-xs font-bold">
                             인기
@@ -236,7 +236,7 @@ const ArcadeView = () => {
                     {/* Game Card 2: Word Rain (Placeholder) */}
                     <button 
                         disabled
-                        className="group relative bg-slate-100 dark:bg-zinc-900/50 rounded-2xl border border-transparent p-6 text-left opacity-70 cursor-not-allowed"
+                        className="group relative vm-card p-6 text-left opacity-70 cursor-not-allowed"
                     >
                         <div className="absolute top-4 right-4 bg-slate-200 dark:bg-zinc-800 text-slate-500 px-3 py-1 rounded-full text-xs font-bold">
                             준비중
@@ -256,7 +256,7 @@ const ArcadeView = () => {
                     {/* Game Card 3: Survival Quiz (Placeholder) */}
                     <button 
                         disabled
-                        className="group relative bg-slate-100 dark:bg-zinc-900/50 rounded-2xl border border-transparent p-6 text-left opacity-70 cursor-not-allowed"
+                        className="group relative vm-card p-6 text-left opacity-70 cursor-not-allowed"
                     >
                          <div className="absolute top-4 right-4 bg-slate-200 dark:bg-zinc-800 text-slate-500 px-3 py-1 rounded-full text-xs font-bold">
                             준비중

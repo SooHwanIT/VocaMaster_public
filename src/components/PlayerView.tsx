@@ -114,7 +114,9 @@ const PlayerView = ({ dataSetId, onExit }: { dataSetId: string; onExit: () => vo
 
                 window.speechSynthesis.speak(utterance);
             } catch (e) {
-                console.error('TTS error:', e);
+                if (import.meta.env.DEV) {
+                    console.error('TTS error:', e);
+                }
                 resolve();
             }
         });
@@ -235,7 +237,7 @@ const PlayerView = ({ dataSetId, onExit }: { dataSetId: string; onExit: () => vo
     if (!dataSet) return null;
 
     return (
-        <div className="flex flex-col h-full bg-slate-50 dark:bg-zinc-950 relative">
+        <div className="vm-page !p-0 relative">
             {/* Header */}
             <div className="flex items-center justify-between p-4 border-b border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900">
                 <div className="flex items-center gap-3">
@@ -268,7 +270,7 @@ const PlayerView = ({ dataSetId, onExit }: { dataSetId: string; onExit: () => vo
                         </div>
 
                         {settings.includeExample && currentWord.examples && currentWord.examples[0] && (
-                            <div className="max-w-2xl p-6 rounded-2xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 shadow-sm">
+                            <div className="max-w-2xl p-6 rounded-2xl vm-card">
                                 <p className="text-xl text-slate-700 dark:text-zinc-300 font-medium leading-relaxed">
                                     {currentWord.examples[0].text}
                                 </p>
@@ -325,7 +327,7 @@ const PlayerView = ({ dataSetId, onExit }: { dataSetId: string; onExit: () => vo
             {/* Settings Modal */}
             {showSettings && (
                 <div className="absolute inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end md:items-center justify-center animate-in fade-in" onClick={() => setShowSettings(false)}>
-                    <div className="bg-white dark:bg-zinc-900 w-full md:max-w-md p-6 rounded-t-3xl md:rounded-3xl shadow-2xl" onClick={e => e.stopPropagation()}>
+                    <div className="w-full md:max-w-md p-6 rounded-t-3xl md:rounded-3xl shadow-2xl vm-card" onClick={e => e.stopPropagation()}>
                          <div className="flex justify-between items-center mb-6">
                             <h3 className="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2">
                                 <Settings size={20} /> Player Settings

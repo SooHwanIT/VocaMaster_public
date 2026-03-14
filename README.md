@@ -1,6 +1,6 @@
 # 📘 English Vocabulary Master (영어단어장)
 
-Electron과 React, TypeScript를 기반으로 제작된 현대적인 영어 단어 학습 애플리케이션입니다.
+React와 TypeScript를 기반으로 제작된 현대적인 영어 단어 학습 애플리케이션입니다.
 매일 새로운 단어를 학습하고, 오프라인 음성 인식을 통해 발음 및 쓰기 연습을 할 수 있습니다.
 
 ## ✨ 주요 기능 (Key Features)
@@ -22,7 +22,7 @@ Electron과 React, TypeScript를 기반으로 제작된 현대적인 영어 단�
 ## 🛠 기술 스택 (Tech Stack)
 
 *   **Frontend Check:** [React](https://react.dev/), [TypeScript](https://www.typescriptlang.org/), [Vite](https://vitejs.dev/)
-*   **Desktop Containers:** [Electron](https://www.electronjs.org/)
+*   **Desktop Runtime (Optional):** [Electron](https://www.electronjs.org/)
 *   **Styling:** [Tailwind CSS](https://tailwindcss.com/)
 *   **Data Storage:** [Dexie.js](https://dexie.org/) (IndexedDB Wrapper)
 *   **Speech Recognition:** [Vosk Browser](https://alphacephei.com/vosk/) (WebAssembly 기반 오프라인 음성 인식)
@@ -32,23 +32,27 @@ Electron과 React, TypeScript를 기반으로 제작된 현대적인 영어 단�
 ## 📂 프로젝트 구조 (Project Structure)
 
 ```text
-├── dist-electron/     # Electron 메인 프로세스 빌드 결과물
-├── electron/          # Electron 소스 코드 (Main, Preload)
 ├── public/
 │   └── models/        # Vosk 음성 인식 모델 (vosk-model-small-en-us-0.15)
+├── scripts/           # 실행 전 점검 스크립트
 ├── src/
 │   ├── app/           # 앱 전역 상태, 스토리지, 유틸리티
 │   ├── components/    # React UI 컴포넌트 (퀴즈, 통계, 뷰 등)
 │   ├── data/          # 학습 데이터 (일별 단어장)
 │   ├── App.tsx        # 메인 라우팅 및 레이아웃
-│   └── main.tsx       # 애플리케이션 진입점
+│   ├── MainApp.tsx    # 앱 엔트리 컴포넌트
+│   └── main.tsx       # 브라우저 렌더 진입점
+├── package.json
+└── vite.config.ts
 ```
 
 ## 🚀 시작하기 (Getting Started)
 
 ### 사전 요구사항 (Prerequisites)
-*   Node.js (LTS 버전 권장)
+*   Node.js 20 LTS 권장 (예: 20.20.1)
 *   npm
+
+> Windows에서 Node.js 24 사용 시 `vite build`가 `exit code -1073740791`로 종료될 수 있습니다. 이 경우 Node.js 20으로 실행해주세요.
 
 ### 설치 및 실행 (Installation & Run)
 
@@ -56,7 +60,7 @@ Electron과 React, TypeScript를 기반으로 제작된 현대적인 영어 단�
     ```bash
     git clone <repository-url>
     cd my-electron-app
-    npm install
+    npm ci
     ```
     *참고: `vosk-browser` 등 일부 패키지는 설치 시간이 소요될 수 있습니다.*
 
@@ -64,16 +68,29 @@ Electron과 React, TypeScript를 기반으로 제작된 현대적인 영어 단�
     `public/models/vosk-model-small-en-us-0.15` 경로에 모델 파일들이 존재하는지 확인해주세요. 모델 파일이 없으면 음성 인식 기능이 정상 작동하지 않을 수 있습니다.
 
 3.  **개발 서버 실행 (Development)**
-    Vite 서버와 Electron 창이 동시에 실행됩니다.
+    Vite 개발 서버를 실행합니다.
     ```bash
     npm run dev
     ```
 
 4.  **프로덕션 빌드 (Build)**
-    배포 가능한 실행 파일로 빌드합니다.
+    정적 자산을 빌드합니다.
     ```bash
     npm run build
     ```
+
+5. **Lint 검사**
+   ```bash
+   npm run lint
+   ```
+
+6. **로컬 빌드 결과 미리보기**
+   ```bash
+   npm run preview
+   ```
+
+> 현재 `package.json` 기준 공식 스크립트는 `dev`, `build`, `lint`, `preview`입니다.
+> Electron 개발/패키징 스크립트(`electron:dev`, `electron:build`)는 아직 정의되어 있지 않습니다.
 
 ## ⚠️ 주의사항
 
