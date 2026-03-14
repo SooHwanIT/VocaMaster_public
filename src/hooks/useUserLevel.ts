@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { addXP, getProfileXP } from '../lib/userDb';
-import { getXPProgress, type XPProgress } from '../lib/xpSystem';
-import type { XPReason } from '../lib/xpSystem';
+import { getLevelFromXP, getXPProgress, type XPProgress, type XPReason } from '../lib/xpSystem';
 
 interface LevelUpNotification {
   level: number;
@@ -36,8 +35,6 @@ export const useUserLevel = (): UseUserLevelReturn => {
 
     const newLevel = data.current_level ?? 1;
     if (newLevel > prevLevelRef.current) {
-      // 레벨업 감지 → 알림 발동
-      const { getLevelFromXP } = await import('../lib/xpSystem');
       const info = getLevelFromXP(data.total_xp ?? 0);
       setLevelUpInfo({ level: newLevel, title: info.title });
     }
@@ -56,7 +53,6 @@ export const useUserLevel = (): UseUserLevelReturn => {
 
       const newLevel = result.current_level ?? 1;
       if (newLevel > prevLevelRef.current) {
-        const { getLevelFromXP } = await import('../lib/xpSystem');
         const info = getLevelFromXP(result.total_xp ?? 0);
         setLevelUpInfo({ level: newLevel, title: info.title });
       }
