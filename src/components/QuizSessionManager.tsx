@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 
-import { getWordsWithStats, updateWordStats } from '../db';
+import { getWordsWithStats, updateWordStats, logWordAttempt } from '../db';
+import { addXP } from '../lib/userDb';
+import { XP_REWARDS } from '../lib/xpSystem';
 import {
     clearQuizSession,
     clearResumeState,
@@ -9,7 +11,12 @@ import {
     saveQuizSession,
     saveResumeState
 } from '../app/storage';
-import type { QuizMode, QuizSessionItem, QuizSessionSnapshot, QuizUIProps, SessionStats } from '../app/types';
+import type { QuizSessionItem, QuizSessionSnapshot, QuizUIProps, SessionStats } from '../app/types';
+import { getPercentage } from '../app/utils';
+import { TransitionPlaceholder } from './TransitionUI';
+import useDelayedPending from '../hooks/useDelayedPending';
+
+type QuizStudyMode = 'CHOICE' | 'WRITE';
 
 const QuizSessionManager = ({
     dataSetId,
@@ -19,7 +26,7 @@ const QuizSessionManager = ({
     renderQuizUI
 }: {
     dataSetId: string;
-    mode: QuizMode;
+    mode: QuizStudyMode;
     onFinish: (stats: SessionStats) => void;
     onQuit: () => void;
     renderQuizUI: (props: QuizUIProps) => React.ReactElement;
@@ -33,6 +40,7 @@ const QuizSessionManager = ({
     const [allWordsList, setAllWordsList] = useState<string[]>([]);
     const [showExitConfirm, setShowExitConfirm] = useState(false);
     const [micEnabled, setMicEnabled] = useState(false);
+    const loadingVisible = useDelayedPending(loading);
 
     const [sessionTries, setSessionTries] = useState(0);
     const [sessionWrongs, setSessionWrongs] = useState<Record<string, number>>({});
@@ -139,6 +147,17 @@ const QuizSessionManager = ({
 
         updateWordStats(current.id, dataSetId, mode, isCorrect, scoreDelta);
 
+        // ── 오답 이력 기록 ──
+        void logWordAttempt(current.id, dataSetId, mode, isCorrect);
+
+        // ── XP 부여 (fire-and-forget, UI를 블로킹하지 않음) ──
+        if (isCorrect) {
+            void addXP(XP_REWARDS.WORD_CORRECT, 'word_correct', current.id);
+            if (masteredNow) {
+                void addXP(XP_REWARDS.WORD_MASTERED, 'word_mastered', current.id);
+            }
+        }
+
         setQueue(prev => {
             const nextQueue = [...prev];
             nextQueue.shift();
@@ -158,15 +177,16 @@ const QuizSessionManager = ({
         setCurrent(null);
     };
 
-    if (loading) return <div className="text-zinc-800 dark:text-white p-8 animate-pulse">학습 데이터를 불러오는 중...</div>;
+    if (loading && loadingVisible) {
+        return <TransitionPlaceholder title="퀴즈 세션을 준비 중이에요" variant="compact" />;
+    }
+    if (loading) return <div className="vm-page" aria-busy="true" />;
     if (!current && queue.length === 0 && totalWordCount === 0) return <div className="text-zinc-800 dark:text-white">단어가 없습니다.</div>;
 
     const totalMastered = masteredCount + newMasteredInSession;
     const currentQueueSize = queue.length;
-    const sessionPercent = (totalWordCount > 0)
-        ? ((totalWordCount - totalMastered - currentQueueSize) / totalWordCount) * 100
-        : 0;
-    const masterPercent = (totalMastered / totalWordCount) * 100;
+    const sessionPercent = getPercentage(totalWordCount - totalMastered - currentQueueSize, totalWordCount);
+    const masterPercent = getPercentage(totalMastered, totalWordCount);
 
     const handleSuspend = () => {
         // 중단하기 (저장 후 종료)
@@ -211,6 +231,16 @@ const QuizSessionManager = ({
         setShowExitConfirm(false);
     };
 
+    const handleQuitNow = () => {
+        clearQuizSession(dataSetId, mode);
+        const resume = loadResumeState();
+        if (resume && resume.mode === mode && resume.dayId === dataSetId) {
+            clearResumeState();
+        }
+        setShowExitConfirm(false);
+        onQuit();
+    };
+
     return (
         <>
             {renderQuizUI({
@@ -241,6 +271,12 @@ const QuizSessionManager = ({
                                 className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-lg shadow-lg hover:shadow-blue-500/20 transition-all hover:-translate-y-0.5"
                             >
                                 중단하고 결과 보기
+                            </button>
+                            <button
+                                onClick={handleQuitNow}
+                                className="w-full py-3 bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-slate-700 dark:text-zinc-200 rounded-xl font-bold transition-colors"
+                            >
+                                저장하지 않고 종료
                             </button>
                             <button 
                                 onClick={() => setShowExitConfirm(false)} 

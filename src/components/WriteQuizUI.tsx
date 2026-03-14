@@ -1,10 +1,11 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ChevronRight, Mic, MicOff } from 'lucide-react';
-import { Model, createModel } from 'vosk-browser';
+import { Model } from 'vosk-browser';
 
 import type { QuizUIProps } from '../app/types';
 import { getLevenshteinDistance } from '../app/utils';
 import { loadMicSettings } from '../app/storage';
+import { getVoskModelArchiveName, loadVoskModel } from '../lib/vosk';
 
 const workletProcessorCode = `
 class MyRecorderProcessor extends AudioWorkletProcessor {
@@ -41,6 +42,8 @@ const WriteQuizUI = ({
     const [isListening, setIsListening] = useState(false);
     const [micTranscript, setMicTranscript] = useState('');
     const [soundWave, setSoundWave] = useState<number[]>([]);
+    const [modelState, setModelState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+    const [modelMessage, setModelMessage] = useState<string | null>(null);
 
     // 모든 외부 참조는 ref로 관리 (의존성 순환 방지)
     const recognitionRef = useRef<{ strict: any; loose: any } | null>(null);
@@ -124,7 +127,10 @@ const WriteQuizUI = ({
 
     // ── 마이크 시작 (1회성) ──
     const startMic = useCallback(async () => {
-        if (!modelRef.current || !modelRef.current.ready) return;
+        if (modelState !== 'ready' || !modelRef.current || !modelRef.current.ready) {
+            setModelMessage('음성 인식 모델이 아직 준비되지 않았습니다.');
+            return;
+        }
 
         // 이미 듣는 중이면 무시
         stopMic();
@@ -195,7 +201,9 @@ const WriteQuizUI = ({
                         finalAnswer = strictRes;
                     }
 
-                    console.log(`Dual Result -> Strict: ${strictRes}, Loose: ${looseRes} => Final: ${finalAnswer}`);
+                    if (import.meta.env.DEV) {
+                        console.log(`Dual Result -> Strict: ${strictRes}, Loose: ${looseRes} => Final: ${finalAnswer}`);
+                    }
                     processFinalResult(finalAnswer || '');
                 }
             };
@@ -288,7 +296,9 @@ const WriteQuizUI = ({
                     recognitionRef.current.strict.acceptWaveformFloat(inputData, audioCtx.sampleRate);
                     recognitionRef.current.loose.acceptWaveformFloat(inputData, audioCtx.sampleRate);
                 } catch (e) {
-                    console.error('Error sending audio:', e);
+                    if (import.meta.env.DEV) {
+                        console.error('Error sending audio:', e);
+                    }
                 }
             };
 
@@ -309,29 +319,44 @@ const WriteQuizUI = ({
             startWaveAnimation();
 
         } catch (e) {
-            console.log('Mic stream error:', e);
+            if (import.meta.env.DEV) {
+                console.log('Mic stream error:', e);
+            }
             setIsListening(false);
             stopWaveAnimation();
         }
-    }, [stopMic, startWaveAnimation]);
+    }, [modelState, startWaveAnimation, stopMic]);
+
+    const initModel = useCallback(async () => {
+        setModelState('loading');
+        setModelMessage(`음성 인식 모델(${getVoskModelArchiveName()})을 준비 중입니다.`);
+
+        try {
+            const { model, path } = await loadVoskModel();
+            modelRef.current = model;
+            setModelState('ready');
+            setModelMessage(`음성 인식 준비 완료: ${path}`);
+
+            if (import.meta.env.DEV) {
+                console.log('Vosk model loaded successfully from', path);
+            }
+        } catch (error) {
+            const message = error instanceof Error
+                ? error.message
+                : '음성 인식 모델을 불러오지 못했습니다.';
+
+            setModelState('error');
+            setModelMessage(message);
+
+            if (import.meta.env.DEV) {
+                console.error('Vosk model loading error:', error);
+            }
+        }
+    }, []);
 
     // ── Vosk Model 초기화 (1회만 생성) ──
     useEffect(() => {
-        const initModel = async () => {
-            try {
-                // 로컬 public 폴더에서 모델 로드 (tar.gz 형식)
-                const modelPath = '/models/vosk-model-small-en-us-0.15.tar.gz';
-                
-                const model = await createModel(modelPath);
-                modelRef.current = model;
-                console.log('Vosk model loaded successfully');
-
-            } catch (error) {
-                console.error('Vosk model loading error:', error);
-            }
-        };
-
-        initModel();
+        void initModel();
 
         return () => {
             if (modelRef.current) {
@@ -351,7 +376,7 @@ const WriteQuizUI = ({
                 silenceGainRef.current = null;
             }
         };
-    }, []);
+    }, [initModel]);
 
     // ── 새 예문이 나올 때 ──
     useEffect(() => {
@@ -370,14 +395,14 @@ const WriteQuizUI = ({
             inputRef.current?.focus();
             // autoStart 설정 확인
             const settings = loadMicSettings();
-            if (settings.autoStart) {
+            if (settings.autoStart && modelState === 'ready') {
                 setMicEnabled(true);
                 startMic();
             }
         }, 150);
 
         return () => clearTimeout(timer);
-    }, [current]); // current만 의존
+    }, [current, modelState, startMic, stopMic]);
 
     if (!current) return null;
 
@@ -455,8 +480,8 @@ const WriteQuizUI = ({
     };
 
     return (
-        <div className="flex flex-col h-full w-full bg-white dark:bg-[#121212] p-6 md:p-10 overflow-hidden" onClick={() => inputRef.current?.focus()}>
-            <div className="flex justify-between items-center mb-6 text-xs font-bold tracking-widest text-zinc-500 dark:text-zinc-400 uppercase">
+        <div className="vm-page md:!p-10 overflow-hidden" onClick={() => inputRef.current?.focus()}>
+            <div className="flex flex-wrap justify-between items-center gap-3 mb-6 text-xs font-bold tracking-widest text-zinc-500 dark:text-zinc-400 uppercase">
                 <span>예문퀴즈</span>
                 <div className="flex items-center gap-4">
                     <span>{remainingCount} 남음</span>
@@ -485,7 +510,7 @@ const WriteQuizUI = ({
                     </div>
                 )}
 
-                <div className="bg-zinc-50 dark:bg-[#181818] p-6 text-center mb-8 border border-zinc-200 dark:border-[#282828]">
+                <div className="vm-card p-6 text-center mb-8">
                     <div className="text-sm text-zinc-500 dark:text-zinc-400 mb-2">뜻: {current.definitions[selectedDefIdx]}</div>
                     <div className="text-xl md:text-2xl font-bold text-zinc-800 dark:text-zinc-200">
                         {currentExample.korean.split(/\{|\}/).map((part: string, i: number) =>
@@ -493,6 +518,25 @@ const WriteQuizUI = ({
                         )}
                     </div>
                 </div>
+
+                {modelMessage && (
+                    <div className={`mb-6 max-w-2xl rounded-xl px-4 py-3 text-sm border ${
+                        modelState === 'error'
+                            ? 'bg-amber-50 border-amber-200 text-amber-700 dark:bg-amber-900/20 dark:border-amber-900/40 dark:text-amber-300'
+                            : modelState === 'ready'
+                                ? 'bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-900/20 dark:border-emerald-900/40 dark:text-emerald-300'
+                                : 'bg-slate-50 border-slate-200 text-slate-600 dark:bg-zinc-900 dark:border-zinc-800 dark:text-zinc-300'
+                    }`}>
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                            <span>{modelMessage}</span>
+                            {modelState === 'error' && (
+                                <button onClick={() => { void initModel(); }} className="vm-btn-secondary h-9 px-3 text-xs self-start sm:self-auto">
+                                    모델 다시 불러오기
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                )}
 
                 <input
                     ref={inputRef}
@@ -511,10 +555,18 @@ const WriteQuizUI = ({
                 />
             </div>
 
-            <div className="fixed bottom-10 right-10 flex flex-col items-center gap-4">
+            <div className="fixed bottom-6 right-6 md:bottom-10 md:right-10 flex flex-col items-center gap-4 z-40">
                 <button
                     onClick={(e) => {
                         e.stopPropagation();
+                        if (modelState === 'error') {
+                            void initModel();
+                            return;
+                        }
+                        if (modelState !== 'ready') {
+                            setModelMessage('음성 인식 모델을 준비 중입니다. 잠시만 기다려 주세요.');
+                            return;
+                        }
                         if (isListening) {
                             // 현재 듣는 중 → 중지
                             stopMic();
@@ -525,14 +577,23 @@ const WriteQuizUI = ({
                             startMic();
                         }
                     }}
-                    className={`w-20 h-20 transition-all shadow-xl transform relative overflow-hidden ${
-                        !micEnabled
+                    disabled={modelState === 'loading'}
+                    className={`w-20 h-20 transition-all shadow-xl transform relative overflow-hidden disabled:opacity-60 disabled:cursor-wait ${
+                        modelState === 'error'
+                            ? 'bg-amber-500 dark:bg-amber-600 hover:bg-amber-600 dark:hover:bg-amber-700'
+                            : !micEnabled
                             ? 'bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600'
                             : isListening
                                 ? 'bg-red-500 dark:bg-red-600 ring-4 ring-red-300 dark:ring-red-400 scale-110'
                                 : 'bg-cyan-500 dark:bg-cyan-600 hover:bg-cyan-600 dark:hover:bg-cyan-700 hover:scale-105'
                     }`}
-                    title={!micEnabled ? '마이크 켜기' : isListening ? '듣는 중... (클릭하면 중지)' : '마이크 준비 (클릭하면 시작)'}
+                    title={modelState === 'error'
+                        ? '음성 모델 재시도'
+                        : !micEnabled
+                            ? '마이크 켜기'
+                            : isListening
+                                ? '듣는 중... (클릭하면 중지)'
+                                : '마이크 준비 (클릭하면 시작)'}
                 >
                     {isListening && soundWave.length > 0 && (
                         <svg
@@ -585,7 +646,9 @@ const WriteQuizUI = ({
                     )}
 
                     <div className="absolute inset-0 flex items-center justify-center z-10">
-                        {!micEnabled ? (
+                        {modelState === 'error' ? (
+                            <MicOff size={32} className="text-white" />
+                        ) : !micEnabled ? (
                             <MicOff size={32} className="text-zinc-500 dark:text-zinc-400" />
                         ) : isListening ? (
                             <div className="bg-white/20 p-2">
@@ -598,15 +661,15 @@ const WriteQuizUI = ({
                 </button>
 
                 {micTranscript && (
-                    <div className="text-center text-xs text-cyan-700 dark:text-cyan-300 bg-white/70 dark:bg-black/50 px-3 py-1 rounded">
+                    <div className="text-center text-xs text-cyan-700 dark:text-cyan-300 bg-white/70 dark:bg-black/50 px-3 py-1 rounded-lg">
                         인식: <span className="font-mono">{micTranscript}</span>
                     </div>
                 )}
             </div>
 
             {feedback !== 'idle' && (
-                <div className="absolute bottom-10 left-10">
-                    <button onClick={(e) => { e.stopPropagation(); handleNext(); }} className="bg-zinc-800 dark:bg-white text-white dark:text-black px-8 py-4 font-bold shadow-2xl hover:scale-105 flex items-center gap-2">
+                <div className="fixed bottom-6 left-6 md:bottom-10 md:left-10 z-40">
+                    <button onClick={(e) => { e.stopPropagation(); handleNext(); }} className="bg-zinc-800 dark:bg-white text-white dark:text-black px-8 py-4 font-bold rounded-xl shadow-2xl hover:scale-105 flex items-center gap-2">
                         다음 <ChevronRight />
                     </button>
                 </div>

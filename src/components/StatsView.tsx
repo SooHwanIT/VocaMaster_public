@@ -1,14 +1,14 @@
-import React from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db';
-import { DATA_SETS } from '../data';
+import { DATA_SETS } from '../data.ts';
 import { BarChart, CheckCircle, XCircle, TrendingUp, Award, Calendar } from 'lucide-react';
+import { getRoundedPercentage } from '../app/utils';
 
 const StatsView = () => {
     // 1. Fetch all records
     const records = useLiveQuery(() => db.studyRecords.toArray());
 
-    if (!records) return <div className="p-8">Loading stats...</div>;
+    if (!records) return <div className="vm-page text-slate-500 dark:text-zinc-400">불러오는 중...</div>;
 
     // --- Calculations ---
 
@@ -29,7 +29,7 @@ const StatsView = () => {
     const totalCorrect = records.reduce((acc, r) => acc + r.correctCnt, 0);
     const totalWrong = records.reduce((acc, r) => acc + r.wrongCnt, 0);
     const totalAttempts = totalCorrect + totalWrong;
-    const accuracy = totalAttempts > 0 ? ((totalCorrect / totalAttempts) * 100).toFixed(1) : '0';
+    const accuracy = getRoundedPercentage(totalCorrect, totalAttempts, 1).toFixed(1);
 
     // 2. Mastery by Day (DataSet)
     // We want to see per Day (DataSet), how many are mastered vs total.
@@ -88,21 +88,21 @@ const StatsView = () => {
         .slice(0, 5);
 
     return (
-        <div className="flex flex-col h-full bg-slate-50 dark:bg-zinc-950 overflow-y-auto">
-             <div className="p-4 md:p-8 pb-4 shrink-0">
-                <h1 className="text-3xl font-black text-slate-800 dark:text-white tracking-tight mb-2 flex items-center gap-3">
-                    <BarChart className="text-orange-500" size={32} />
+        <div className="vm-page">
+             <div className="vm-page-header shrink-0">
+                <h1 className="vm-page-title mb-2 flex items-center gap-3">
+                    <BarChart className="vm-accent-text" size={32} />
                     학습 통계
                 </h1>
-                <p className="text-slate-500 dark:text-slate-400">
+                <p className="vm-page-subtitle">
                     전체 학습 현황과 성취도를 한눈에 확인하세요.
                 </p>
             </div>
 
-            <div className="flex-1 p-8 pt-0 space-y-8 pb-20">
+            <div className="flex-1 space-y-8 pb-20">
                 {/* Overview Cards */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                     <div className="bg-white dark:bg-zinc-900 p-6 rounded-2xl border border-slate-100 dark:border-zinc-800 shadow-sm flex flex-col justify-between h-32">
+                     <div className="vm-card p-6 flex flex-col justify-between h-32">
                         <div className="flex items-center gap-2 text-slate-500 dark:text-zinc-400 font-bold text-xs uppercase tracking-wider">
                             <TrendingUp size={16} /> 학습한 단어
                         </div>
@@ -110,15 +110,15 @@ const StatsView = () => {
                             {uniqueWordsStudied} <span className="text-lg text-slate-400 font-medium">/ {totalWordsAvailable}</span>
                         </div>
                      </div>
-                     <div className="bg-white dark:bg-zinc-900 p-6 rounded-2xl border border-slate-100 dark:border-zinc-800 shadow-sm flex flex-col justify-between h-32">
+                     <div className="vm-card p-6 flex flex-col justify-between h-32">
                         <div className="flex items-center gap-2 text-slate-500 dark:text-zinc-400 font-bold text-xs uppercase tracking-wider">
                             <Award size={16} /> 암기 완료
                         </div>
                          <div className="text-3xl font-black text-emerald-500">
-                            {totalMastered} <span className="text-lg text-slate-400 font-medium">records</span>
+                            {totalMastered} <span className="text-lg text-slate-400 font-medium">개</span>
                         </div>
                      </div>
-                     <div className="bg-white dark:bg-zinc-900 p-6 rounded-2xl border border-slate-100 dark:border-zinc-800 shadow-sm flex flex-col justify-between h-32">
+                     <div className="vm-card p-6 flex flex-col justify-between h-32">
                         <div className="flex items-center gap-2 text-slate-500 dark:text-zinc-400 font-bold text-xs uppercase tracking-wider">
                             <CheckCircle size={16} /> 정답률
                         </div>
@@ -126,7 +126,7 @@ const StatsView = () => {
                             {accuracy}%
                         </div>
                      </div>
-                     <div className="bg-white dark:bg-zinc-900 p-6 rounded-2xl border border-slate-100 dark:border-zinc-800 shadow-sm flex flex-col justify-between h-32">
+                     <div className="vm-card p-6 flex flex-col justify-between h-32">
                         <div className="flex items-center gap-2 text-slate-500 dark:text-zinc-400 font-bold text-xs uppercase tracking-wider">
                             <XCircle size={16} /> 총 오답 수
                         </div>
@@ -139,7 +139,7 @@ const StatsView = () => {
                 {/* Grid Content */}
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                     {/* Mastery By Day */}
-                    <div className="lg:col-span-2 bg-white dark:bg-zinc-900 rounded-2xl border border-slate-100 dark:border-zinc-800 shadow-sm p-6">
+                    <div className="lg:col-span-2 vm-card p-6">
                         <h3 className="text-lg font-bold text-slate-800 dark:text-white mb-6 flex items-center gap-2">
                              <Calendar size={20} className="text-slate-400" /> 챕터별 암기 현황
                         </h3>
@@ -164,7 +164,7 @@ const StatsView = () => {
                     </div>
 
                     {/* Worst Words */}
-                    <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-slate-100 dark:border-zinc-800 shadow-sm p-6 overflow-hidden">
+                    <div className="vm-card p-6 overflow-hidden">
                         <h3 className="text-lg font-bold text-slate-800 dark:text-white mb-6 flex items-center gap-2">
                              <TrendingUp size={20} className="text-red-500" /> 많이 틀린 단어 TOP 5
                         </h3>

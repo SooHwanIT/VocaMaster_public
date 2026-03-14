@@ -23,4 +23,55 @@ export const speakText = (text: string) => {
     window.speechSynthesis.speak(utter);
 };
 
-export const isElectron = () => typeof navigator === 'object' && /electron/i.test(navigator.userAgent);
+export const shuffleArray = <T,>(items: T[]): T[] => {
+    const cloned = [...items];
+    for (let i = cloned.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [cloned[i], cloned[j]] = [cloned[j], cloned[i]];
+    }
+    return cloned;
+};
+
+export const getPercentage = (numerator: number, denominator: number): number => {
+    if (denominator <= 0) return 0;
+    return (numerator / denominator) * 100;
+};
+
+export const getRoundedPercentage = (
+    numerator: number,
+    denominator: number,
+    decimals = 0
+): number => {
+    const percentage = getPercentage(numerator, denominator);
+    const factor = 10 ** decimals;
+    return Math.round(percentage * factor) / factor;
+};
+
+export const getCorrectCount = (totalTries: number, wrongAttempts = 0): number =>
+    Math.max(0, totalTries - wrongAttempts);
+
+export const getTestScorePercent = (
+    totalTries: number,
+    wrongAttempts: number,
+    totalWordCount: number
+): number => getRoundedPercentage(getCorrectCount(totalTries, wrongAttempts), totalWordCount, 0);
+
+declare global {
+    interface Window {
+        electronAPI?: unknown;
+    }
+}
+
+export const isElectron = (): boolean => {
+    if (typeof window !== 'undefined') {
+        const userAgent = window.navigator?.userAgent ?? '';
+        if (userAgent.includes('Electron')) return true;
+        if (typeof window.electronAPI !== 'undefined') return true;
+    }
+
+    const processLike = (globalThis as typeof globalThis & {
+        process?: { versions?: Record<string, string | undefined> };
+    }).process;
+
+    return Boolean(processLike?.versions?.electron);
+};

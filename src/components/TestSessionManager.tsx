@@ -1,8 +1,9 @@
-import React, { useMemo, useRef, useState } from 'react';
-import { DATA_SETS } from '../data';
+import { useMemo, useRef, useState } from 'react';
+import { DATA_SETS } from '../data.ts';
 import TestModeUI from './TestModeUI';
 import TestResultView from './TestResultView';
-import type { SessionStats } from '../app/types';
+import type { SessionStats, SessionWordSnapshot, TestResultEntry } from '../app/types';
+import { logWordAttempt } from '../db';
 
 interface TestSessionManagerProps {
     dataSetId: string;
@@ -10,11 +11,11 @@ interface TestSessionManagerProps {
     onQuit: () => void;
 }
 
-const TestSessionManager: React.FC<TestSessionManagerProps> = ({
+const TestSessionManager = ({
     dataSetId,
     onFinish,
     onQuit
-}) => {
+}: TestSessionManagerProps) => {
     const startTimeRef = useRef(Date.now());
     const [view, setView] = useState<'TEST' | 'RESULT'>('TEST');
     const [testResults, setTestResults] = useState<{ wordId: string; isCorrect: boolean }[]>([]);
@@ -26,14 +27,24 @@ const TestSessionManager: React.FC<TestSessionManagerProps> = ({
         if (!dataSet) return [];
         // Shuffle words for test? usually yes.
         // Let's shuffle them randomly each time
-        return [...dataSet.words].sort(() => Math.random() - 0.5);
+        return [...dataSet.words]
+            .map((word) => ({ ...word, dayId: dataSetId }))
+            .sort(() => Math.random() - 0.5);
     }, [dataSetId]); 
 
-    const handleComplete = (results: { wordId: string; isCorrect: boolean }[], direction: 'EN_TO_KR' | 'KR_TO_EN') => {
+    const handleComplete = (results: TestResultEntry[], direction: 'EN_TO_KR' | 'KR_TO_EN') => {
         const endTime = Date.now();
         const totalCount = results.length;
         const correctCount = results.filter(r => r.isCorrect).length;
         const wrongCount = totalCount - correctCount;
+        const sessionWords: SessionWordSnapshot[] = words.map((word) => ({
+            id: word.id,
+            word: word.word,
+            definitions: [...word.definitions],
+            etymo: word.etymo,
+            examples: word.examples.map((example) => ({ ...example })),
+            dayId: word.dayId,
+        }));
         
         const wrongWords = results.filter(r => !r.isCorrect).map(r => r.wordId);
         const mostWrong = wrongWords.length > 0 ? wrongWords[0] : '';
@@ -46,20 +57,28 @@ const TestSessionManager: React.FC<TestSessionManagerProps> = ({
             totalWordCount: totalCount,
             masteredCount: 0, 
             mostWrong,
-            wrongWords // Add wrongWords list
+            wrongWords,
+            testType: direction,
+            testResults: results,
+            sessionWords,
         };
 
         setTestResults(results);
         setTestStats(stats);
         setTestType(direction);
         setView('RESULT');
+
+        // ── 오답 이력 기록 (fire-and-forget) ──
+        results.forEach(r => {
+            void logWordAttempt(r.wordId, dataSetId, 'TEST', r.isCorrect);
+        });
         
         // 상위 컴포넌트(App.tsx)에 통계를 보내어 저장 등 처리
         onFinish(stats);
     };
 
     if (words.length === 0) {
-        return <div className="flex items-center justify-center h-full text-red-500">데이터를 불러올 수 없습니다.</div>;
+        return <div className="vm-page items-center justify-center text-red-500">데이터를 불러올 수 없습니다.</div>;
     }
 
     if (view === 'RESULT' && testStats) {

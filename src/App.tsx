@@ -1,13 +1,13 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { Book, BookOpen, Home, Keyboard, Library, Minus, Square, Trophy, X, User as UserIcon, BarChart, Bookmark, Settings, History, Gamepad2, FileCheck, Menu, Play } from 'lucide-react';
-import { ipcRenderer } from 'electron';
+﻿import React, { useCallback, useEffect, useState } from 'react';
+import { AlertTriangle, Book, BookOpen, Home, Keyboard, Trophy, X, User as UserIcon, BarChart, Bookmark, Settings, History, Gamepad2, FileCheck, Menu, Play, ChevronRight, NotebookPen, RefreshCw } from 'lucide-react';
 
-import { saveStudySession } from './db';
-import { DATA_SETS } from './data';
+import { flushSyncQueue, getSyncStatusSnapshot, saveStudySession, subscribeToSyncStatus, type SyncStatusSnapshot } from './db';
+import { useUserLevel } from './hooks/useUserLevel';
+import LevelUpModal from './components/LevelUpModal';
 import { STORAGE_KEY } from './app/constants';
 import { appReducer, getInitialState } from './app/state';
 import { clearResumeState, loadResumeState, saveResumeState } from './app/storage';
-import type { AppMode, QuizMode, ResumeState, SessionStats } from './app/types';
+import type { AppMode, ResumeState, SessionStats } from './app/types';
 
 import DashboardView from './components/DashboardView';
 import WordStudyView from './components/WordStudyView';
@@ -26,35 +26,28 @@ import TestSessionManager from './components/TestSessionManager';
 import ResultView from './components/ResultView';
 import ArcadeView from './components/ArcadeView';
 import PlayerView from './components/PlayerView';
+import AuthGate from './components/AuthGate';
+import WrongNotesView from './components/WrongNotesView';
+import { TransitionSurface } from './components/TransitionUI';
+import { getTestScorePercent } from './app/utils';
+
+type TabId = 'DASHBOARD' | 'WORD_STUDY' | 'BOOKMARKS' | 'STATS' | 'ARCADE' | 'HISTORY' | 'WRONG_NOTES' | 'SETTINGS' | 'PROFILE';
+const TAB_IDS: TabId[] = ['DASHBOARD', 'WORD_STUDY', 'BOOKMARKS', 'STATS', 'ARCADE', 'HISTORY', 'WRONG_NOTES', 'SETTINGS', 'PROFILE'];
+const ROUTABLE_MODES: AppMode[] = ['WORD_LIST', 'CHOICE', 'WRITE', 'PROGRESS', 'TEST', 'PLAYER'];
 
 const App = () => {
     const [state, dispatch] = React.useReducer(appReducer, undefined, getInitialState);
     const [modePickerDayId, setModePickerDayId] = useState<string | null>(null);
+    const [lastWordStudyDayId, setLastWordStudyDayId] = useState<string | null>(null);
     const [resumeState, setResumeState] = useState<ResumeState | null>(() => loadResumeState());
     const [exitConfirm, setExitConfirm] = useState<{ mode: AppMode; dayId: string | null } | null>(null);
 
-    // Sidebar navigation state (internal UI state)
-    // Synchronize this with the reducer state if necessary, or just use it to switch views
-    // If state.view is 'DASHBOARD', we check this explicitly to know which tab to show.
-    // Ideally, we might want to move this into the main state, but for now we can manage it here or mapping it.
-    // Let's use state.mode to determine the active tab if state.view is 'DASHBOARD'
-    
-    // Mapping:
-    // Dashboard Tab -> state.mode === 'DASHBOARD_MAIN' (We need to add this mode or handle it)
-    // Word Study Tab -> state.mode === 'WORD_LIST' (initially) or just 'WORD_STUDY_HOME' 
-    // Profile Tab -> state.mode === 'PROFILE'
+    const { levelUpInfo, clearLevelUp } = useUserLevel();
 
-    // Let's assume we want a cleaner way. 
-    // We can say:
-    // Tab 1: Dashboard -> render DashboardView
-    // Tab 2: Word Study -> render WordStudyView (which selects Day) -> Then goes to QUIZ/LIST modes
-    // Tab 3: Profile -> render ProfileView
-    
-    // Current Reducer logic is a bit mode-centric.
-    // Let's modify the view rendering logic below.
-
-    const [activeTab, setActiveTab] = useState<'DASHBOARD' | 'WORD_STUDY' | 'BOOKMARKS' | 'STATS' | 'ARCADE' | 'HISTORY' | 'SETTINGS' | 'PROFILE'>('DASHBOARD');
+    const [activeTab, setActiveTab] = useState<TabId>('DASHBOARD');
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+    const [syncStatus, setSyncStatus] = useState<SyncStatusSnapshot>(() => getSyncStatusSnapshot());
+    const isApplyingUrlRef = React.useRef(false);
 
     useEffect(() => {
         setIsMobileMenuOpen(false);
@@ -65,7 +58,6 @@ const App = () => {
         try {
             localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
         } catch {
-            // Ignore persistence errors (private mode, quota, etc.)
         }
     }, [state]);
 
@@ -83,8 +75,90 @@ const App = () => {
         }
     }, [state.view]);
 
+    useEffect(() => subscribeToSyncStatus(setSyncStatus), []);
+
+    const applyUrlState = useCallback(() => {
+        if (typeof window === 'undefined') return;
+
+        isApplyingUrlRef.current = true;
+        const params = new URLSearchParams(window.location.search);
+
+        const pageParam = params.get('page');
+        const tabParam = params.get('tab');
+        const modeParam = params.get('mode') as AppMode | null;
+        const dayParam = params.get('day');
+        const pickerParam = params.get('picker');
+
+        if ((pageParam === 'learn' || pageParam === 'result') && modeParam && ROUTABLE_MODES.includes(modeParam)) {
+            if (dayParam) {
+                setActiveTab('WORD_STUDY');
+                setLastWordStudyDayId(dayParam);
+                setModePickerDayId(null);
+                dispatch({ type: 'START_DAY_MODE', dayId: dayParam, mode: modeParam });
+            } else {
+                dispatch({ type: 'BACK_DASHBOARD' });
+                setActiveTab('WORD_STUDY');
+            }
+        } else {
+            const resolvedTab = (tabParam && TAB_IDS.includes(tabParam as TabId)
+                ? tabParam
+                : 'DASHBOARD') as TabId;
+
+            dispatch({ type: 'BACK_DASHBOARD' });
+            setActiveTab(resolvedTab);
+
+            if (resolvedTab === 'WORD_STUDY' && pickerParam) {
+                setModePickerDayId(pickerParam);
+                setLastWordStudyDayId(pickerParam);
+            } else {
+                setModePickerDayId(null);
+            }
+        }
+
+        window.setTimeout(() => {
+            isApplyingUrlRef.current = false;
+        }, 0);
+    }, [dispatch]);
+
+    useEffect(() => {
+        applyUrlState();
+        window.addEventListener('popstate', applyUrlState);
+        return () => window.removeEventListener('popstate', applyUrlState);
+    }, [applyUrlState]);
+
+    useEffect(() => {
+        if (typeof window === 'undefined' || isApplyingUrlRef.current) return;
+
+        const params = new URLSearchParams();
+
+        if (state.view === 'QUIZ' && state.dayId && ROUTABLE_MODES.includes(state.mode)) {
+            params.set('page', 'learn');
+            params.set('mode', state.mode);
+            params.set('day', state.dayId);
+        } else if (state.view === 'RESULT' && state.dayId && ROUTABLE_MODES.includes(state.mode)) {
+            params.set('page', 'result');
+            params.set('mode', state.mode);
+            params.set('day', state.dayId);
+        } else {
+            params.set('page', 'tab');
+            params.set('tab', activeTab);
+            if (activeTab === 'WORD_STUDY' && modePickerDayId) {
+                params.set('picker', modePickerDayId);
+            }
+        }
+
+        const nextSearch = params.toString();
+        const currentSearch = window.location.search.replace(/^\?/, '');
+        if (nextSearch === currentSearch) return;
+
+        const nextUrl = `${window.location.pathname}?${nextSearch}`;
+        window.history.pushState({}, '', nextUrl);
+    }, [activeTab, modePickerDayId, state.dayId, state.mode, state.view]);
+
 
     const openModePicker = useCallback((id: string) => {
+        setActiveTab('WORD_STUDY');
+        setLastWordStudyDayId(id);
         setModePickerDayId(id);
     }, []);
 
@@ -94,6 +168,7 @@ const App = () => {
 
     const handleStartDayMode = useCallback((mode: AppMode) => {
         if (!modePickerDayId) return;
+        setLastWordStudyDayId(modePickerDayId);
         dispatch({ type: 'START_DAY_MODE', dayId: modePickerDayId, mode });
         setModePickerDayId(null);
     }, [modePickerDayId, dispatch]);
@@ -105,29 +180,39 @@ const App = () => {
             return;
         }
         if (!resumeState.dayId) return;
+        setActiveTab('WORD_STUDY');
+        setLastWordStudyDayId(resumeState.dayId);
         dispatch({ type: 'START_DAY_MODE', dayId: resumeState.dayId, mode: resumeState.mode });
     };
 
-    const requestExit = () => {
-        if (state.mode === 'CHOICE' || state.mode === 'WRITE') {
+    const navigateBackToWordStudy = useCallback((reopenModePicker: boolean) => {
+        dispatch({ type: 'BACK_DASHBOARD' });
+        setActiveTab('WORD_STUDY');
+        if (reopenModePicker && lastWordStudyDayId) {
+            setModePickerDayId(lastWordStudyDayId);
+        }
+    }, [dispatch, lastWordStudyDayId]);
+
+    const requestExit = (forceImmediate = false) => {
+        if (!forceImmediate && (state.mode === 'CHOICE' || state.mode === 'WRITE')) {
             setExitConfirm({ mode: state.mode, dayId: state.dayId });
             return;
         }
-        dispatch({ type: 'BACK_DASHBOARD' });
+        navigateBackToWordStudy(!forceImmediate);
     };
 
     const handleExitSave = () => {
         saveResumeState({ mode: state.mode, dayId: state.dayId, savedAt: Date.now() });
         setResumeState(loadResumeState());
         setExitConfirm(null);
-        dispatch({ type: 'BACK_DASHBOARD' });
+        navigateBackToWordStudy(true);
     };
 
     const handleExitDiscard = () => {
         clearResumeState();
         setResumeState(null);
         setExitConfirm(null);
-        dispatch({ type: 'BACK_DASHBOARD' });
+        navigateBackToWordStudy(true);
     };
 
     useEffect(() => {
@@ -157,13 +242,19 @@ const App = () => {
                 endTime: stats.endTime,
                 totalCount: stats.totalWordCount,
                 correctCount: stats.totalTries - (stats.wrongAttempts || 0),
-                wrongCount: stats.wrongAttempts || 0, // Use field from stats
-                wrongWords: stats.wrongWords // 상세 오답 기록 저장
+                wrongCount: stats.wrongAttempts || 0, 
+                wrongWords: stats.wrongWords,
+                testType: stats.testType,
+                testResults: stats.testResults,
+                sessionWords: stats.sessionWords,
             });
             
-            // 시험 모드일 경우 최고 점수 갱신
             if (state.mode === 'TEST') {
-                const currentScore = Math.round(((stats.totalTries - (stats.wrongAttempts || 0)) / stats.totalWordCount) * 100);
+                const currentScore = getTestScorePercent(
+                    stats.totalTries,
+                    stats.wrongAttempts || 0,
+                    stats.totalWordCount
+                );
                 const key = `best_score_test_${state.dayId}`;
                 const bestScore = parseInt(localStorage.getItem(key) || '0', 10);
                 if (currentScore > bestScore) {
@@ -175,7 +266,11 @@ const App = () => {
     };
 
     const handleDashboard = () => {
-        dispatch({ type: 'BACK_DASHBOARD' });
+        navigateBackToWordStudy(true);
+    };
+
+    const handleRetryQuiz = () => {
+        dispatch({ type: 'RETRY_QUIZ' });
     };
 
     const navItems = [
@@ -185,6 +280,7 @@ const App = () => {
         { id: 'STATS', icon: BarChart, label: '통계', color: 'text-orange-500' },
         { id: 'ARCADE', icon: Gamepad2, label: '아케이드', color: 'text-purple-500' },
         { id: 'HISTORY', icon: History, label: '학습 기록', color: 'text-blue-500' },
+        { id: 'WRONG_NOTES', icon: NotebookPen, label: '오답 노트', color: 'text-red-500' },
         { id: 'SETTINGS', icon: Settings, label: '설정', color: 'text-gray-500' },
         { id: 'PROFILE', icon: UserIcon, label: '프로필', color: 'text-purple-500' },
     ];
@@ -195,7 +291,7 @@ const App = () => {
                 <button
                     key={item.id}
                     onClick={() => {
-                        setActiveTab(item.id as any);
+                        setActiveTab(item.id as TabId);
                         if (isMobile) setIsMobileMenuOpen(false);
                     }}
                     className={`w-full flex items-center ${isMobile ? 'justify-start px-4' : 'justify-center md:justify-start px-0 md:px-4'} py-3 rounded-xl text-sm font-medium transition-colors ${
@@ -212,62 +308,53 @@ const App = () => {
         </nav>
     );
 
-    const isLearningView = state.view !== 'DASHBOARD' || state.mode === 'WORD_LIST' || state.mode === 'PROGRESS' || state.mode === 'TODAY';
-    const showSidebar = !isLearningView || activeTab === 'WORD_STUDY'; 
-    // Actually, show sidebar always unless in Quiz/Active Learning Mode?
-    // User requirement: Sidebar with tabs. 
-    // "Content should move".
-    // Let's refine `showSidebar`: 
-    // Hide sidebar ONLY when in actual Quiz/Learning session (CHOICE, WRITE, WORD_LIST, TODAY).
-    // Show sidebar in Dashboard, WordStudy(Overview), Profile.
-    
-    // We can assume state.view === 'DASHBOARD' && state.mode is NOT a specific learning sub-mode
-    // But current architecture uses 'DASHBOARD' view to hold WordListView as well?
-    // Let's check: WordListView is rendered when state.mode === 'WORD_LIST'.
-    // So if state.mode is 'WORD_LIST', we are "learning".
-    
-    // Let's rely on checking if we overlap the main content.
-    const isActiveLearning = state.view === 'QUIZ' || state.mode === 'WORD_LIST' || state.mode === 'PROGRESS' || state.mode === 'TODAY';
+    const isActiveLearning =
+        state.view === 'QUIZ' ||
+        state.view === 'RESULT' ||
+        state.mode === 'WORD_LIST' ||
+        state.mode === 'PROGRESS' ||
+        state.mode === 'TODAY' ||
+        state.mode === 'PLAYER' ||
+        state.mode === 'TEST';
     const shouldShowSidebar = !isActiveLearning;
+    const pageTransitionKey = state.view === 'DASHBOARD'
+        ? `tab:${activeTab}`
+        : `${state.view}:${state.mode}:${state.dayId ?? 'none'}`;
 
     return (
+        <AuthGate>
         <div className="flex flex-col h-screen w-screen overflow-hidden font-sans select-none text-text-primary relative bg-slate-50">
-            {/* Custom Title Bar - Flat Style */}
-            <div
-                className="h-10 px-4 flex items-center justify-between z-50 bg-slate-100 dark:bg-zinc-900 border-b border-slate-200 dark:border-zinc-800"
-                style={{ WebkitAppRegion: 'drag' }}
-            >
-                <div className="flex items-center gap-2 text-sm font-bold tracking-tight text-slate-900 dark:text-white">
-                    <div className="w-2.5 h-2.5 bg-accent" />
-                    <span>VocaMaster</span>
+            {syncStatus.phase === 'error' && (
+                <div className="absolute top-3 left-1/2 -translate-x-1/2 z-[120] w-[min(92vw,720px)]">
+                    <div className="vm-card-soft px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-amber-200 dark:border-amber-900/40 bg-amber-50/95 dark:bg-zinc-900/95 backdrop-blur">
+                        <div className="flex items-start gap-3">
+                            <AlertTriangle size={18} className="text-amber-500 shrink-0 mt-0.5" />
+                            <div>
+                                <div className="text-sm font-bold text-slate-800 dark:text-white">동기화에 실패했습니다</div>
+                                <div className="text-xs text-slate-500 dark:text-zinc-400">
+                                    {syncStatus.lastError ?? '잠시 후 자동으로 다시 시도합니다.'}
+                                </div>
+                            </div>
+                        </div>
+                        <button
+                            onClick={() => {
+                                void flushSyncQueue(true);
+                            }}
+                            className="vm-btn-secondary h-9 px-3 text-xs inline-flex items-center justify-center gap-2"
+                        >
+                            <RefreshCw size={14} /> 다시 시도
+                        </button>
+                    </div>
                 </div>
-                <div className="flex items-center gap-1" style={{ WebkitAppRegion: 'no-drag' }}>
-                    <button
-                        onClick={() => ipcRenderer.send('window:minimize')}
-                        className="w-8 h-8 rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-zinc-800 transition-colors flex items-center justify-center"
-                        aria-label="Minimize"
-                    >
-                        <Minus size={14} />
-                    </button>
-                    <button
-                        onClick={() => ipcRenderer.send('window:toggle-maximize')}
-                        className="w-8 h-8 rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-zinc-800 transition-colors flex items-center justify-center"
-                        aria-label="Maximize"
-                    >
-                        <Square size={12} />
-                    </button>
-                    <button
-                        onClick={() => ipcRenderer.send('window:close')}
-                        className="w-8 h-8 rounded-lg text-slate-500 dark:text-slate-400 hover:text-white hover:bg-red-500 transition-colors flex items-center justify-center"
-                        aria-label="Close"
-                    >
-                        <X size={14} />
-                    </button>
-                </div>
-            </div>
-
+            )}
+            {levelUpInfo && (
+                <LevelUpModal
+                    level={levelUpInfo.level}
+                    title={levelUpInfo.title}
+                    onClose={clearLevelUp}
+                />
+            )}
             <div className="flex flex-1 overflow-hidden relative z-10">
-                {/* Mobile Sidebar Overlay */}
                 <div
                     className={`fixed inset-0 z-50 md:hidden flex transition-opacity duration-300 ${
                         isMobileMenuOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
@@ -282,255 +369,259 @@ const App = () => {
                             isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
                         }`}
                     >
-                             <div className="h-16 flex items-center px-6 gap-3 font-bold text-xl tracking-tighter text-text-primary dark:text-white">
-                                <Trophy className="text-accent shrink-0" /> <span>VocaMaster</span>
+                                      <div className="h-16 flex items-center px-6 gap-3 font-bold text-xl tracking-tighter text-text-primary dark:text-white">
+                                          <Trophy className="text-accent shrink-0" /> <span>Etyvoca</span>
                             </div>
                             {renderNav(true)}
                     </div>
                 </div>
                 
-                {/* Floating Hamburger Button for Mobile - Glassmorphism Style */}
                 <button
                     onClick={() => setIsMobileMenuOpen(true)}
                     className={`fixed bottom-6 right-6 z-40 md:hidden w-14 h-14 rounded-full shadow-2xl flex items-center justify-center transition-all duration-500 cubic-bezier(0.34, 1.56, 0.64, 1) backdrop-blur-md border border-white/40 dark:border-white/10 overflow-hidden ${
-                        shouldShowSidebar ? 'hidden' : ''
+                        !shouldShowSidebar ? 'hidden' : ''
                     } ${
                         isMobileMenuOpen 
                             ? 'scale-0 opacity-0 rotate-90' 
                             : 'scale-100 opacity-100 rotate-0 bg-white/60 dark:bg-zinc-800/60 text-slate-800 dark:text-white hover:bg-white/80 dark:hover:bg-zinc-700/80 hover:scale-105 active:scale-95'
                     }`}
-                    aria-label="Menu"
                 >
-                    <div className="absolute inset-0 bg-gradient-to-br from-white/40 to-transparent dark:from-white/5 pointer-events-none" />
-                    <Menu size={24} className="relative z-10 drop-shadow-sm" />
+                     {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
                 </button>
 
-
-                {/* Flat Sidebar - Terrain Style */}
-                {shouldShowSidebar && (
-                    <div className="hidden md:flex w-20 md:w-64 bg-slate-100 dark:bg-zinc-900 border-r border-slate-200 dark:border-zinc-800 flex-col h-full shrink-0 z-20 transition-all duration-300">
-                        <div className="h-20 flex items-center justify-center md:justify-start px-0 md:px-6 gap-3 font-bold text-xl tracking-tighter text-text-primary dark:text-white overflow-hidden whitespace-nowrap">
-                            <Trophy className="text-accent shrink-0" /> <span className="hidden md:inline">VocaMaster</span>
+                <div 
+                    className={`hidden md:flex flex-col border-r border-slate-200 dark:border-zinc-800 bg-slate-100 dark:bg-zinc-900 transition-all duration-300 ease-[cubic-bezier(0.25,0.1,0.25,1)] ${
+                        shouldShowSidebar ? 'w-64 opacity-100 translate-x-0' : 'w-0 opacity-0 -translate-x-8 border-none overflow-hidden'
+                    }`}
+                >
+                    <div className="h-16 flex items-center px-6 gap-3 font-bold text-xl tracking-tighter text-text-primary dark:text-white shrink-0">
+                        <Trophy className="text-accent shrink-0" /> <span>Etyvoca</span>
+                    </div>
+                    {renderNav()}
+                    
+                    <div className="p-4 mt-auto border-t border-slate-200 dark:border-zinc-800 shrink-0">
+                        <div className="p-4 rounded-xl bg-orange-100 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800/30">
+                            <div className="flex items-center gap-2 mb-2 text-orange-700 dark:text-orange-400 font-semibold text-sm">
+                                <Trophy size={16} />
+                                <span>오늘의 습관</span>
+                            </div>
+                            <div className="text-xs text-orange-600 dark:text-orange-500/80 leading-relaxed">
+                                매일 10분씩 학습하면<br/>1년이면 3,650단어!
+                            </div>
                         </div>
-                        {renderNav(false)}
                     </div>
-                )}
+                </div>
 
-                {/* Main Content Area */}
-                <main className="flex-1 relative overflow-hidden bg-white dark:bg-[#09090b]">
-                    <div className="w-full h-full relative flex flex-col">
-                        
-                        {/* 1. Dashboard Tab Content */}
-                        {activeTab === 'DASHBOARD' && !isActiveLearning && (
-                            <DashboardView />
-                        )}
-
-                        {/* 2. Word Study Tab Content */}
-                        {activeTab === 'WORD_STUDY' && !isActiveLearning && (
-                             <WordStudyView onOpenModePicker={openModePicker} resumeState={resumeState} onResume={handleResume} />
-                        )}
-
-                        {/* 5. History Tab Content */}
-                        {activeTab === 'HISTORY' && !isActiveLearning && (
-                            <HistoryView />
-                        )}
-
-                        {/* 3. Bookmarks Tab Content */}
-                        {activeTab === 'BOOKMARKS' && !isActiveLearning && (
-                            <BookmarksView />
-                        )}
-
-                        {/* 4. Stats Tab Content */}
-                        {activeTab === 'STATS' && !isActiveLearning && (
-                            <StatsView />
-                        )}
-
-                        {/* Arcade Tab Content */}
-                        {activeTab === 'ARCADE' && !isActiveLearning && (
-                            <ArcadeView />
-                        )}
-
-                        {/* 5. Settings Tab Content */}
-                        {activeTab === 'SETTINGS' && !isActiveLearning && (
-                            <SettingsView theme={state.theme ?? 'light'} onThemeChange={(theme) => dispatch({ type: 'SET_THEME', theme })} />
-                        )}
-
-                        {/* Active Learning Views (Take over the screen) */}
-                        {state.mode === 'WORD_LIST' && state.dayId && (
-                            <WordListView dataSetId={state.dayId} onExit={handleDashboard} />
-                        )}
-
-                        {state.mode === 'PLAYER' && state.dayId && (
-                            <PlayerView dataSetId={state.dayId} onExit={handleDashboard} />
-                        )}
-
-                        {state.mode === 'PROGRESS' && (
-                            <ProgressView dataSetId={state.dayId ?? undefined} onExit={handleDashboard} />
-                        )}
-
-                        {state.mode === 'TODAY' && (
-                            <TodayStudyView onExit={requestExit} />
-                        )}
-
-                        {/* 6. Profile Tab Content */}
-                        {activeTab === 'PROFILE' && !isActiveLearning && (
-                            <ProfileView 
-                                theme={state.theme ?? 'light'} 
-                                onThemeChange={(theme) => dispatch({ type: 'SET_THEME', theme })} 
-                            />
-                        )}
-
-                        {state.view === 'QUIZ' && state.dayId && (state.mode === 'CHOICE' || state.mode === 'WRITE') && (
-                            <QuizSessionManager
-                                key={`${state.dayId}-${state.mode}`}
-                                dataSetId={state.dayId}
-                                mode={state.mode as QuizMode}
-                                onFinish={handleQuizFinish}
-                                onQuit={handleDashboard}
-                                renderQuizUI={(props) => (
-                                    state.mode === 'CHOICE'
-                                        ? <ChoiceQuizUI {...props} />
-                                        : <WriteQuizUI {...props} />
+                <main className="flex-1 overflow-hidden relative bg-slate-50 dark:bg-[#09090b]">
+                    <TransitionSurface transitionKey={pageTransitionKey} className="h-full">
+                        {state.view === 'DASHBOARD' ? (
+                            <>
+                                {activeTab === 'DASHBOARD' && (
+                                    <DashboardView />
                                 )}
-                            />
-                        )}
+                                {activeTab === 'WORD_STUDY' && (
+                                    <WordStudyView
+                                        onOpenModePicker={openModePicker}
+                                        resumeState={resumeState}
+                                        onResume={handleResume}
+                                    />
+                                )}
+                                {activeTab === 'BOOKMARKS' && (
+                                    <BookmarksView />
+                                )}
+                                 {activeTab === 'STATS' && (
+                                    <StatsView />
+                                )}
+                                 {activeTab === 'HISTORY' && (
+                                    <HistoryView />
+                                )}
+                                {activeTab === 'WRONG_NOTES' && (
+                                    <WrongNotesView />
+                                )}
+                                {activeTab === 'SETTINGS' && (
+                                    <SettingsView
+                                        theme={state.theme ?? 'light'}
+                                        onThemeChange={(theme) => dispatch({ type: 'SET_THEME', theme })}
+                                    />
+                                )}
+                                {activeTab === 'PROFILE' && (
+                                    <ProfileView
+                                        theme={state.theme ?? 'light'}
+                                        onThemeChange={(theme) => dispatch({ type: 'SET_THEME', theme })}
+                                    />
+                                )}
+                                {activeTab === 'ARCADE' && (
+                                    <ArcadeView />
+                                )}
+                            </>
+                        ) : (
+                             <div className="absolute inset-0 z-20 bg-white dark:bg-[#09090b]">
+                                {state.mode === 'WORD_LIST' && state.dayId && (
+                                    <WordListView
+                                        dataSetId={state.dayId}
+                                        onExit={requestExit}
+                                    />
+                                )}
+                                {state.mode === 'CHOICE' && state.dayId && (
+                                    <QuizSessionManager
+                                        dataSetId={state.dayId}
+                                        mode="CHOICE"
+                                        onFinish={handleQuizFinish}
+                                        onQuit={() => requestExit(true)}
+                                        renderQuizUI={(props) => <ChoiceQuizUI {...props} />}
+                                    />
+                                )}
+                                {state.mode === 'WRITE' && state.dayId && (
+                                    <QuizSessionManager
+                                        dataSetId={state.dayId}
+                                        mode="WRITE"
+                                        onFinish={handleQuizFinish}
+                                        onQuit={() => requestExit(true)}
+                                        renderQuizUI={(props) => <WriteQuizUI {...props} />}
+                                    />
+                                )}
+                                {state.mode === 'TEST' && state.dayId && (
+                                    <TestSessionManager
+                                        dataSetId={state.dayId}
+                                        onFinish={handleQuizFinish}
+                                        onQuit={requestExit}
+                                    />
+                                )}
+                                 {state.mode === 'PROGRESS' && state.dayId && (
+                                    <ProgressView dataSetId={state.dayId} onExit={requestExit} />
+                                )}
 
-                        {state.view === 'QUIZ' && state.dayId && state.mode === 'TEST' && (
-                            <TestSessionManager
-                                dataSetId={state.dayId}
-                                onFinish={handleQuizFinish}
-                                onQuit={handleDashboard}
-                            />
-                        )}
+                                {state.mode === 'PLAYER' && state.dayId && (
+                                    <PlayerView dataSetId={state.dayId} onExit={requestExit} />
+                                )}
 
-                        {state.view === 'RESULT' && state.lastStats && (
-                            <ResultView 
-                                stats={state.lastStats} 
-                                words={DATA_SETS.find(d => d.id === state.dayId)?.words}
-                                onRetry={() => dispatch({ type: 'RETRY_QUIZ' })} 
-                                onDashboard={handleDashboard} 
-                            />
+                                {state.mode === 'TODAY' && (
+                                    <TodayStudyView onExit={requestExit} />
+                                )}
+
+                                {state.view === 'RESULT' && state.lastStats && (
+                                    <ResultView
+                                        stats={state.lastStats}
+                                        onRetry={handleRetryQuiz}
+                                        onDashboard={handleDashboard}
+                                    />
+                                )}
+                            </div>
                         )}
-                    </div>
+                    </TransitionSurface>
+                    
+                    {modePickerDayId && (
+                        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+                            <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl p-6 w-full max-w-md m-4 border border-slate-200 dark:border-zinc-800">
+                                <div className="flex justify-between items-center mb-6">
+                                    <h3 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                                        <BookOpen className="text-accent" /> 학습 모드 선택
+                                    </h3>
+                                    <button 
+                                        onClick={closeModePicker}
+                                        className="p-2 -mr-2 rounded-lg hover:bg-slate-100 dark:hover:bg-zinc-800 text-slate-500 transition-colors"
+                                    >
+                                        <X size={20} />
+                                    </button>
+                                </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <button
+                                        onClick={() => handleStartDayMode('WORD_LIST')}
+                                        className="p-4 rounded-xl bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/30 border border-blue-200 dark:border-blue-800 transition-all group text-left"
+                                    >
+                                        <div className="flex items-center gap-2 mb-2 font-bold text-blue-700 dark:text-blue-400">
+                                            <Book size={20} /> 단어장
+                                        </div>
+                                        <div className="text-xs text-blue-600/80 dark:text-blue-400/80">
+                                            전체 단어를 리스트로 학습합니다.
+                                        </div>
+                                    </button>
+                                    <button
+                                        onClick={() => handleStartDayMode('CHOICE')}
+                                        className="p-4 rounded-xl bg-purple-50 dark:bg-purple-900/20 hover:bg-purple-100 dark:hover:bg-purple-900/30 border border-purple-200 dark:border-purple-800 transition-all group text-left"
+                                    >
+                                        <div className="flex items-center gap-2 mb-2 font-bold text-purple-700 dark:text-purple-400">
+                                            <Keyboard size={20} /> 객관식 퀴즈
+                                        </div>
+                                        <div className="text-xs text-purple-600/80 dark:text-purple-400/80">
+                                            4지 선다형 퀴즈를 풉니다.
+                                        </div>
+                                    </button>
+                                    <button
+                                        onClick={() => handleStartDayMode('WRITE')}
+                                        className="p-4 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 hover:bg-emerald-100 dark:hover:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-800 transition-all group text-left"
+                                    >
+                                        <div className="flex items-center gap-2 mb-2 font-bold text-emerald-700 dark:text-emerald-400">
+                                            <FileCheck size={20} /> 주관식/받아쓰기
+                                        </div>
+                                        <div className="text-xs text-emerald-600/80 dark:text-emerald-400/80">
+                                            직접 쓰거나 말하며 학습합니다.
+                                        </div>
+                                    </button>
+                                     <button
+                                        onClick={() => handleStartDayMode('PLAYER')}
+                                        className="p-4 rounded-xl bg-indigo-50 dark:bg-indigo-900/20 hover:bg-indigo-100 dark:hover:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-800 transition-all group text-left"
+                                    >
+                                        <div className="flex items-center gap-2 mb-2 font-bold text-indigo-700 dark:text-indigo-400">
+                                            <Play size={20} /> 단어 플레이어
+                                        </div>
+                                        <div className="text-xs text-indigo-600/80 dark:text-indigo-400/80">
+                                            단어를 자동으로 재생하며 듣습니다.
+                                        </div>
+                                    </button>
+                                    <button
+                                        onClick={() => handleStartDayMode('TEST')}
+                                        className="col-span-2 p-4 rounded-xl bg-orange-50 dark:bg-orange-900/20 hover:bg-orange-100 dark:hover:bg-orange-900/30 border border-orange-200 dark:border-orange-800 transition-all group text-left flex items-center justify-between"
+                                    >
+                                        <div>
+                                            <div className="flex items-center gap-2 mb-1 font-bold text-orange-700 dark:text-orange-400">
+                                                <Trophy size={20} /> 시험 모드
+                                            </div>
+                                            <div className="text-xs text-orange-600/80 dark:text-orange-400/80">
+                                                실전처럼 테스트를 봅니다. (점수 기록)
+                                            </div>
+                                        </div>
+                                        <ChevronRight className="text-orange-300 group-hover:text-orange-500 transition-colors" />
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {exitConfirm && (
+                        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+                            <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl p-6 w-full max-w-sm m-4 border border-slate-200 dark:border-zinc-800 text-center">
+                                <h3 className="text-lg font-bold mb-2 text-slate-900 dark:text-white">학습을 종료하시겠습니까?</h3>
+                                <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
+                                    진행 중인 내용은 저장하거나 삭제할 수 있습니다.
+                                </p>
+                                <div className="flex flex-col gap-2">
+                                     <button
+                                        onClick={handleExitSave}
+                                        className="w-full py-3 rounded-xl bg-accent text-white font-bold hover:bg-accent/90 transition-colors shadow-lg shadow-accent/20"
+                                    >
+                                        저장하고 종료
+                                    </button>
+                                    <button
+                                        onClick={handleExitDiscard}
+                                        className="w-full py-3 rounded-xl bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-slate-300 font-bold hover:bg-slate-200 dark:hover:bg-zinc-700 transition-colors"
+                                    >
+                                        저장하지 않고 종료
+                                    </button>
+                                    <button
+                                        onClick={() => setExitConfirm(null)}
+                                        className="w-full py-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-sm font-medium transition-colors mt-2"
+                                    >
+                                        계속 학습하기
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </main>
             </div>
-
-            {/* Mode Picker Modal */}
-            {modePickerDayId && (
-                <div className="absolute inset-0 z-50 bg-black/50 dark:bg-black/80 flex items-center justify-center animate-in fade-in duration-200 backdrop-blur-sm" onClick={closeModePicker}>
-                    <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 w-full max-w-2xl p-4 md:p-8 rounded-3xl mx-4 shadow-2xl scale-100 animate-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex items-start justify-between gap-4 mb-4 md:mb-8">
-                            <div>
-                                <p className="text-xs text-accent font-bold tracking-widest uppercase mb-2">학습 모드 선택</p>
-                                <h3 className="text-2xl md:text-3xl font-bold text-text-primary dark:text-white">
-                                    {DATA_SETS.find(d => d.id === modePickerDayId)?.title ?? '선택한 Day'}
-                                </h3>
-                                <p className="text-text-secondary dark:text-zinc-400 text-sm mt-2">키보드 숫자키 1~4를 눌러 빠르게 시작하세요.</p>
-                            </div>
-                            <button onClick={closeModePicker} className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-zinc-800 text-text-secondary dark:text-zinc-400 hover:text-text-primary dark:hover:text-white transition-colors">
-                                <X size={24} />
-                            </button>
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <button onClick={() => handleStartDayMode('WORD_LIST')} className="group text-left p-6 rounded-2xl bg-slate-50 dark:bg-zinc-800/50 border border-slate-100 dark:border-zinc-700 hover:border-accent dark:hover:border-accent hover:bg-white dark:hover:bg-zinc-800 transition-all relative overflow-hidden">
-                                <div className="absolute top-4 right-4 text-xs font-bold text-text-secondary dark:text-zinc-500 border border-slate-200 dark:border-zinc-700 px-2 py-1 rounded-md bg-white dark:bg-zinc-900">1</div>
-                                <div className="w-12 h-12 rounded-xl bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform shadow-sm">
-                                    <Library size={24} />
-                                </div>
-                                <h3 className="text-xl font-bold text-text-primary dark:text-white mb-1">단어장</h3>
-                                <p className="text-sm text-text-secondary dark:text-zinc-400">전체 단어 목록 학습</p>
-                            </button>
-
-                            <button onClick={() => handleStartDayMode('CHOICE')} className="group text-left p-6 rounded-2xl bg-slate-50 dark:bg-zinc-800/50 border border-slate-100 dark:border-zinc-700 hover:border-accent dark:hover:border-accent hover:bg-white dark:hover:bg-zinc-800 transition-all relative overflow-hidden">
-                                <div className="absolute top-4 right-4 text-xs font-bold text-text-secondary dark:text-zinc-500 border border-slate-200 dark:border-zinc-700 px-2 py-1 rounded-md bg-white dark:bg-zinc-900">2</div>
-                                <div className="w-12 h-12 rounded-xl bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform shadow-sm">
-                                    <BookOpen size={24} />
-                                </div>
-                                <h3 className="text-xl font-bold text-text-primary dark:text-white mb-1">객관식 퀴즈</h3>
-                                <p className="text-sm text-text-secondary dark:text-zinc-400">4지 선다형 복습</p>
-                            </button>
-
-                            <button onClick={() => handleStartDayMode('WRITE')} className="group text-left p-6 rounded-2xl bg-slate-50 dark:bg-zinc-800/50 border border-slate-100 dark:border-zinc-700 hover:border-accent dark:hover:border-accent hover:bg-white dark:hover:bg-zinc-800 transition-all relative overflow-hidden">
-                                <div className="absolute top-4 right-4 text-xs font-bold text-text-secondary dark:text-zinc-500 border border-slate-200 dark:border-zinc-700 px-2 py-1 rounded-md bg-white dark:bg-zinc-900">3</div>
-                                <div className="w-12 h-12 rounded-xl bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform shadow-sm">
-                                    <Keyboard size={24} />
-                                </div>
-                                <h3 className="text-xl font-bold text-text-primary dark:text-white mb-1">받아쓰기</h3>
-                                <p className="text-sm text-text-secondary dark:text-zinc-400">예문 듣고 빈칸 채우기</p>
-                            </button>
-
-                            <button onClick={() => handleStartDayMode('TEST')} className="group text-left p-6 rounded-2xl bg-slate-50 dark:bg-zinc-800/50 border border-slate-100 dark:border-zinc-700 hover:border-red-500 dark:hover:border-red-500 hover:bg-white dark:hover:bg-zinc-800 transition-all relative overflow-hidden">
-                                <div className="absolute top-4 right-4 text-xs font-bold text-text-secondary dark:text-zinc-500 border border-slate-200 dark:border-zinc-700 px-2 py-1 rounded-md bg-white dark:bg-zinc-900">4</div>
-                                <div className="w-12 h-12 rounded-xl bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform shadow-sm">
-                                    <FileCheck size={24} />
-                                </div>
-                                <div className="flex justify-between items-end">
-                                    <div>
-                                        <h3 className="text-xl font-bold text-text-primary dark:text-white mb-1">실전 모의고사</h3>
-                                        <p className="text-sm text-text-secondary dark:text-zinc-400">즉시 채점 없는 실전 테스트</p>
-                                    </div>
-                                    {localStorage.getItem(`best_score_test_${modePickerDayId}`) && (
-                                        <div className="text-xs font-bold text-amber-500 bg-amber-50 dark:bg-amber-900/30 px-2 py-1 rounded border border-amber-100 dark:border-amber-800">
-                                            Best: {localStorage.getItem(`best_score_test_${modePickerDayId}`)}점
-                                        </div>
-                                    )}
-                                </div>
-                            </button>
-
-                            <button onClick={() => handleStartDayMode('PROGRESS')} className="group text-left p-6 rounded-2xl bg-slate-50 dark:bg-zinc-800/50 border border-slate-100 dark:border-zinc-700 hover:border-accent dark:hover:border-accent hover:bg-white dark:hover:bg-zinc-800 transition-all relative overflow-hidden">
-                                <div className="absolute top-4 right-4 text-xs font-bold text-text-secondary dark:text-zinc-500 border border-slate-200 dark:border-zinc-700 px-2 py-1 rounded-md bg-white dark:bg-zinc-900">5</div>
-                                <div className="w-12 h-12 rounded-xl bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform shadow-sm">
-                                    <Trophy size={24} />
-                                </div>
-                                <h3 className="text-xl font-bold text-text-primary dark:text-white mb-1">학습 현황</h3>
-                                <p className="text-sm text-text-secondary dark:text-zinc-400">진도율 확인</p>
-                            </button>
-
-                            <button onClick={() => handleStartDayMode('PLAYER')} className="group text-left p-6 rounded-2xl bg-slate-50 dark:bg-zinc-800/50 border border-slate-100 dark:border-zinc-700 hover:border-accent dark:hover:border-accent hover:bg-white dark:hover:bg-zinc-800 transition-all relative overflow-hidden">
-                                <div className="absolute top-4 right-4 text-xs font-bold text-text-secondary dark:text-zinc-500 border border-slate-200 dark:border-zinc-700 px-2 py-1 rounded-md bg-white dark:bg-zinc-900">6</div>
-                                <div className="w-12 h-12 rounded-xl bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform shadow-sm">
-                                    <Play size={24} />
-                                </div>
-                                <h3 className="text-xl font-bold text-text-primary dark:text-white mb-1">재생 모드</h3>
-                                <p className="text-sm text-text-secondary dark:text-zinc-400">오디오 플레이어로 학습</p>
-                            </button>
-
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Exit Confirmation Modal - unchanged */}
-            {exitConfirm && (
-                <div className="absolute inset-0 z-50 bg-black/20 flex items-center justify-center p-4 animate-in fade-in duration-200">
-                    <div className="bg-white border border-slate-200 w-full max-w-md p-6 rounded-3xl mx-4 shadow-xl scale-100 animate-in zoom-in-95 duration-200">
-                        <h3 className="text-xl md:text-2xl font-bold text-text-primary mb-3">학습을 종료할까요?</h3>
-                        <p className="text-text-secondary mb-8 leading-relaxed">진행 상황을 저장하면<br/>나중에 이어서 계속할 수 있어요.</p>
-                        <div className="flex flex-col gap-3">
-                            <button
-                                onClick={handleExitSave}
-                                className="w-full py-4 text-white bg-accent hover:bg-accent/90 rounded-xl font-bold text-lg shadow-sm transition-all hover:-translate-y-0.5"
-                            >
-                                저장하고 종료
-                            </button>
-                            <button
-                                onClick={handleExitDiscard}
-                                className="w-full py-4 text-red-500 bg-red-50 hover:bg-red-100 rounded-xl font-bold text-lg transition-colors border border-red-100"
-                            >
-                                저장하지 않고 종료
-                            </button>
-                            <button
-                                onClick={() => setExitConfirm(null)}
-                                className="w-full py-3 text-text-secondary hover:text-text-primary font-medium transition-colors"
-                            >
-                                취소
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
         </div>
+        </AuthGate>
     );
 };
 

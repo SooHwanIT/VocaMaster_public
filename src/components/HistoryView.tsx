@@ -1,13 +1,14 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { format } from 'date-fns';
 import { ko } from 'date-fns/locale';
-import { History, Calendar, CheckCircle, Clock } from 'lucide-react';
+import { History, Calendar, Clock } from 'lucide-react';
 import { db } from '../db';
-import { DATA_SETS } from '../data';
+import { DATA_SETS } from '../data.ts';
 import TestResultView from './TestResultView';
 import ResultView from './ResultView';
 import type { SessionStats } from '../app/types';
+import { getRoundedPercentage } from '../app/utils';
 
 const HistoryView = () => {
     const sessions = useLiveQuery(() => 
@@ -15,25 +16,29 @@ const HistoryView = () => {
     );
     const [selectedSessionId, setSelectedSessionId] = useState<number | null>(null);
 
-    if (!sessions) return <div className="p-8">Loading...</div>;
+    if (!sessions) return <div className="vm-page text-slate-500 dark:text-zinc-400">불러오는 중...</div>;
 
     // 선택된 세션 상세 팝업용 데이터
     const selectedSession = sessions.find(s => s.id === selectedSessionId);
+    const sessionWords = selectedSession?.sessionWords;
+    const resolvedWords = sessionWords && sessionWords.length > 0
+        ? sessionWords
+        : DATA_SETS.find(d => d.id === selectedSession?.dataSetId)?.words ?? [];
     
     // TestResultView용 format으로 변환
     const statsForPopup: SessionStats | null = selectedSession ? {
         startTime: selectedSession.startTime,
         endTime: selectedSession.endTime,
-        totalTries: selectedSession.totalCount, // totalCount가 tries와 같다고 가정 (or stored separately)
+        totalTries: selectedSession.totalCount,
         wrongAttempts: selectedSession.wrongCount,
         totalWordCount: selectedSession.totalCount,
-        masteredCount: 0, // DB에 저장되었는지 확인 필요. 현재는 0
-        mostWrong: '', // DB에 저장 안 됨
-        wrongWords: selectedSession.wrongWords // 오답/학습 단어 리스트
+        masteredCount: 0,
+        mostWrong: selectedSession.wrongWords?.[0] ?? '',
+        wrongWords: selectedSession.wrongWords,
+        testType: selectedSession.testType,
+        testResults: selectedSession.testResults,
+        sessionWords: selectedSession.sessionWords,
     } : null;
-
-    // 해당 데이터셋 찾기
-    const sessionDataSet = selectedSession ? DATA_SETS.find(d => d.id === selectedSession.dataSetId) : null;
 
     // 결과 뷰 렌더링을 위한 임시 empty results (DB에 상세 결과 저장을 안 함... ㅠㅠ)
     // 오답노트는 못 보여주고 점수만 보여줄 수 있음. 
@@ -45,7 +50,7 @@ const HistoryView = () => {
     
     if (sessions.length === 0) {
         return (
-            <div className="flex flex-col items-center justify-center h-full text-zinc-400">
+            <div className="vm-page flex-col items-center justify-center text-zinc-400">
                 <History size={48} className="mb-4 opacity-50" />
                 <p className="text-lg font-medium">아직 학습 기록이 없습니다.</p>
                 <p className="text-sm">학습을 시작하여 기록을 남겨보세요!</p>
@@ -64,9 +69,9 @@ const HistoryView = () => {
     const dates = Object.keys(grouped).sort((a, b) => b.localeCompare(a));
 
     return (
-        <div className="flex flex-col h-full bg-slate-50 dark:bg-zinc-950 overflow-y-auto relative">
+        <div className="vm-page relative">
             {/* 결과 팝업 */}
-            {selectedSessionId && selectedSession && statsForPopup && sessionDataSet && (
+            {selectedSessionId && selectedSession && statsForPopup && (
                 <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
                     <div className="bg-white dark:bg-zinc-900 w-full max-w-4xl h-[90vh] rounded-3xl shadow-2xl overflow-hidden relative">
                         <button 
@@ -76,30 +81,26 @@ const HistoryView = () => {
                             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                         </button>
                         
-                        {/* 
-                           DB에 저장된 wrongWords가 있으면 상세 오답 노트를 보여주고,
-                           없으면(구 버전 데이터) 빈 배열 전달.
-                        */}
                         <div className="relative h-full">
-                            {sessionDataSet && (statsForPopup.wrongAttempts || 0) > 0 && !(selectedSession.wrongWords && selectedSession.wrongWords.length > 0) && (
+                            {selectedSession.mode === 'TEST' && (!selectedSession.testResults || !selectedSession.sessionWords) && (
                                 <div className="absolute top-4 left-4 z-50 text-xs text-slate-500 bg-white/80 px-2 py-1 rounded-md border border-slate-200">
-                                    * 과거 기록에는 상세 오답 목록이 저장되지 않았을 수 있습니다.
+                                    * 과거 기록에는 당시 문제/정답 스냅샷이 없어 일부 상세 정보가 제한됩니다.
                                 </div>
                             )}
 
                             {selectedSession.mode === 'TEST' ? (
                                 <TestResultView 
                                     stats={statsForPopup}
-                                    results={(selectedSession.wrongWords || []).map(id => ({ wordId: id, isCorrect: false }))}
-                                    words={sessionDataSet?.words || []}
-                                    testType="EN_TO_KR" // 저장 안하므로 기본값
+                                    results={selectedSession.testResults || (selectedSession.wrongWords || []).map(id => ({ wordId: id, isCorrect: false }))}
+                                    words={resolvedWords}
+                                    testType={selectedSession.testType ?? 'EN_TO_KR'}
                                     onRetry={() => setSelectedSessionId(null)} 
                                     onDashboard={() => setSelectedSessionId(null)} 
                                 />
                             ) : (
                                 <ResultView
                                     stats={statsForPopup}
-                                    words={sessionDataSet?.words}
+                                    words={resolvedWords}
                                     onRetry={() => setSelectedSessionId(null)}
                                     onDashboard={() => setSelectedSessionId(null)}
                                 />
@@ -109,17 +110,17 @@ const HistoryView = () => {
                 </div>
             )}
 
-            <div className="p-4 md:p-8 pb-4 shrink-0">
-                <h1 className="text-3xl font-black text-slate-800 dark:text-white tracking-tight mb-2 flex items-center gap-3">
+            <div className="vm-page-header shrink-0">
+                <h1 className="vm-page-title mb-2 flex items-center gap-3">
                     <History className="text-blue-500" size={32} />
                     학습 기록
                 </h1>
-                <p className="text-slate-500 dark:text-slate-400">
+                <p className="vm-page-subtitle">
                     지난 학습 활동을 확인하세요. 클릭하여 상세 결과를 볼 수 있습니다.
                 </p>
             </div>
 
-            <div className="flex-1 p-4 md:p-8 pt-0 space-y-8 pb-20">
+            <div className="flex-1 space-y-8 pb-20">
                 {dates.map(date => (
                     <div key={date}>
                         <h3 className="text-sm font-bold text-slate-500 dark:text-zinc-500 mb-4 flex items-center gap-2">
@@ -133,12 +134,14 @@ const HistoryView = () => {
                                 const title = dataset ? dataset.title : session.dataSetId;
                                 const durationSec = Math.floor((session.endTime - session.startTime) / 1000);
                                 const durationMin = Math.floor(durationSec / 60);
+                                const attemptCount = session.correctCount + session.wrongCount;
+                                const accuracy = getRoundedPercentage(session.correctCount, attemptCount, 0);
 
                                 return (
                                     <div 
                                         key={session.id} 
                                         onClick={() => setSelectedSessionId(session.id!)}
-                                        className="bg-white dark:bg-zinc-900 p-4 rounded-xl border border-slate-100 dark:border-zinc-800 shadow-sm flex items-center justify-between cursor-pointer hover:border-blue-500 dark:hover:border-blue-500 hover:shadow-md transition-all group"
+                                        className="vm-card-soft p-4 flex items-center justify-between cursor-pointer hover:border-blue-500 dark:hover:border-blue-500 hover:shadow-md transition-all group"
                                     >
                                         <div className="flex items-center gap-4">
                                             <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-transform group-hover:scale-110 ${
@@ -166,10 +169,10 @@ const HistoryView = () => {
 
                                         <div className="text-right">
                                             <div className="text-lg font-black text-slate-800 dark:text-white">
-                                                {Math.round((session.correctCount / (session.correctCount + session.wrongCount)) * 100)}%
+                                                {accuracy}%
                                             </div>
                                             <div className="text-xs text-slate-500 dark:text-zinc-400">
-                                                {session.correctCount} / {session.correctCount + session.wrongCount} 정답
+                                                {session.correctCount} / {attemptCount} 정답
                                             </div>
                                         </div>
                                     </div>

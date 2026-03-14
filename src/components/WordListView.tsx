@@ -1,11 +1,12 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { CheckCircle, ChevronRight, Volume2, Star } from 'lucide-react';
-import { useLiveQuery } from 'dexie-react-hooks';
+import { useCallback, useEffect, useState } from 'react';
+import { ChevronRight, Volume2, Star } from 'lucide-react';
 
-import { DATA_SETS } from '../data';
-import { getWordsWithStats, setMemoryScore, type StudyRecord, db, toggleBookmark } from '../db';
+import { DATA_SETS } from '../data.ts';
+import { getBookmarks, getWordsWithStats, setMemoryScore, type Bookmark, type StudyRecord, toggleBookmark } from '../db';
 import type { Word } from '../data/types';
 import { speakText } from '../app/utils';
+import { TransitionPlaceholder } from './TransitionUI';
+import useDelayedPending from '../hooks/useDelayedPending';
 
 const WordListView = ({
     dataSetId,
@@ -24,10 +25,16 @@ const WordListView = ({
     const [viewMode, setViewMode] = useState<'list' | 'card'>('list');
     const [words, setWords] = useState<WordWithMemory[]>([]);
     const [loading, setLoading] = useState(true);
-    const [sortType, setSortType] = useState<SortType>('index');
+    const [sortType] = useState<SortType>('index');
+    const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
+    const loadingVisible = useDelayedPending(loading);
 
     const dataSet = DATA_SETS.find(d => d.id === dataSetId);
-    const bookmarks = useLiveQuery(() => db.bookmarks.where('dataSetId').equals(dataSetId).toArray(), [dataSetId]);
+
+    const loadBookmarks = useCallback(async () => {
+        const allBookmarks = await getBookmarks();
+        setBookmarks(allBookmarks.filter((bookmark) => bookmark.dataSetId === dataSetId));
+    }, [dataSetId]);
 
     const loadWords = useCallback(async () => {
         setLoading(true);
@@ -42,6 +49,7 @@ const WordListView = ({
 
         const merged = (DATA_SETS.find(d => d.id === dataSetId)?.words ?? []).map(word => ({
             ...word,
+            dayId: dataSetId,
             choiceRecord: choiceMap.get(word.id),
             writeRecord: writeMap.get(word.id)
         }));
@@ -53,6 +61,10 @@ const WordListView = ({
     useEffect(() => {
         loadWords();
     }, [loadWords]);
+
+    useEffect(() => {
+        loadBookmarks();
+    }, [loadBookmarks]);
 
     const getStage = (word: WordWithMemory) => {
         const choiceScore = word.choiceRecord?.memoryScore ?? 0;
@@ -122,7 +134,18 @@ const WordListView = ({
         loadWords();
     };
 
-    if (loading) return <div className="text-text-secondary dark:text-zinc-400 p-8 animate-pulse text-lg transition-colors">단어 불러오는 중...</div>;
+    if (loading && loadingVisible) {
+        return (
+            <TransitionPlaceholder
+                title="단어장을 열고 있어요"
+                variant="list"
+                onRetry={() => {
+                    void loadWords();
+                }}
+            />
+        );
+    }
+    if (loading) return <div className="vm-page" aria-busy="true" />;
     if (!dataSet) return <div className="text-text-secondary dark:text-zinc-400 p-8 text-lg transition-colors">데이터를 찾을 수 없습니다.</div>;
 
     const GlassCard = ({ word, onToggleStage }: { word: WordWithMemory, onToggleStage: (w: WordWithMemory) => void }) => {
@@ -145,7 +168,11 @@ const WordListView = ({
                              </div>
                              <div className="flex gap-2">
                                 <button
-                                    onClick={(e) => { e.stopPropagation(); toggleBookmark(word.id, dataSetId); }}
+                                    onClick={async (e) => {
+                                        e.stopPropagation();
+                                        await toggleBookmark(word.id, dataSetId);
+                                        await loadBookmarks();
+                                    }}
                                     className={`text-slate-300 hover:text-emerald-500 transition-colors ${isBookmarked ? 'text-emerald-500 fill-emerald-500' : ''}`}
                                 >
                                     <Star size={16} className={isBookmarked ? 'fill-emerald-500' : ''}/>
@@ -213,17 +240,17 @@ const WordListView = ({
     };
 
     return (
-        <div className="flex flex-col h-full w-full p-4 md:p-8 overflow-y-auto bg-slate-50 dark:bg-[#09090b] transition-colors duration-300">
+        <div className="vm-page transition-colors duration-300">
             {/* Header - Flat Sticky */}
-            <div className="bg-slate-50 dark:bg-[#09090b] px-4 py-4 md:px-6 md:py-6 mb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 sticky top-0 z-40 transition-all">
+            <div className="bg-slate-50 dark:bg-zinc-950 px-4 py-4 md:px-6 md:py-6 mb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 sticky top-0 z-40 transition-all">
                 <div>
                     <button onClick={onExit} className="text-text-secondary dark:text-zinc-400 hover:text-text-primary dark:hover:text-white mb-1 flex items-center gap-1 text-sm font-medium transition-colors">
                         <ChevronRight size={14} className="rotate-180" /> 돌아가기
                     </button>
-                    <h2 className="text-3xl font-extrabold text-text-primary dark:text-white tracking-tight font-sans transition-colors">
+                    <h2 className="vm-page-title transition-colors">
                         {dataSet.title}
                     </h2>
-                    <p className="text-text-secondary dark:text-zinc-500 text-sm font-medium mt-1 transition-colors">{dataSet.description}</p>
+                    <p className="vm-page-subtitle text-sm font-medium transition-colors">{dataSet.description}</p>
                 </div>
                 
                 <div className="flex gap-2">
@@ -252,7 +279,7 @@ const WordListView = ({
                         return (
                         <div
                             key={word.id}
-                            className="bg-white dark:bg-zinc-900 p-4 hover:bg-slate-50 dark:hover:bg-zinc-800/50 transition-all group flex items-center gap-4 border-b border-slate-100 dark:border-zinc-800 last:border-none"
+                            className="vm-card-soft p-4 hover:bg-slate-50 dark:hover:bg-zinc-800/50 transition-all group flex items-center gap-4"
                         >
                             <div className="flex-1">
                                 <div className="flex items-center gap-3 mb-1">
@@ -273,7 +300,11 @@ const WordListView = ({
                             
                             <div className="flex items-center gap-3">
                                 <button
-                                    onClick={(e) => { e.stopPropagation(); toggleBookmark(word.id, dataSetId); }}
+                                    onClick={async (e) => {
+                                        e.stopPropagation();
+                                        await toggleBookmark(word.id, dataSetId);
+                                        await loadBookmarks();
+                                    }}
                                     className={`p-2 rounded-full hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors ${isBookmarked ? 'text-emerald-500' : 'text-slate-300'}`}
                                 >
                                     <Star size={18} className={isBookmarked ? 'fill-emerald-500' : ''} />
@@ -293,7 +324,7 @@ const WordListView = ({
 
             {/* Card Mode */}
             {viewMode === 'card' && (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 pb-8">
+                <div className="grid grid-cols-[repeat(auto-fit,minmax(240px,1fr))] gap-6 pb-8">
                     {getSortedWords().map((word) => (
                         <GlassCard key={word.id} word={word} onToggleStage={handleToggleStage} />
                     ))}
