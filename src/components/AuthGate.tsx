@@ -32,7 +32,7 @@ const parseAuthModeFromLocation = (): AuthMode => {
 
   const path = window.location.pathname.toLowerCase();
   const params = new URLSearchParams(window.location.search);
-  const modeParam = params.get('mode');
+  const modeParam = params.get('authMode') ?? params.get('mode');
 
   if (path === '/signup' || modeParam === 'signup') return 'SIGN_UP';
   return 'SIGN_IN';
@@ -42,6 +42,9 @@ const parseAuthRouteFromLocation = (): AuthRoute => {
   if (typeof window === 'undefined') return 'LANDING';
 
   const path = window.location.pathname.toLowerCase();
+  const params = new URLSearchParams(window.location.search);
+  const hasAuthMode = params.has('authMode') || params.get('mode') === 'signup' || params.get('mode') === 'signin';
+  if (hasAuthMode) return 'AUTH';
   if (path === '/auth' || path === '/login' || path === '/signup') return 'AUTH';
   return 'LANDING';
 };
@@ -102,7 +105,7 @@ const AuthGate = ({ children }: AuthGateProps) => {
     setErrorMessage('');
     setInfoMessage('');
     if (typeof window !== 'undefined') {
-      const target = `/auth?mode=${nextMode === 'SIGN_UP' ? 'signup' : 'signin'}`;
+      const target = `/?authMode=${nextMode === 'SIGN_UP' ? 'signup' : 'signin'}`;
       window.history.pushState({}, '', target);
     }
   };
@@ -123,7 +126,7 @@ const AuthGate = ({ children }: AuthGateProps) => {
     setErrorMessage('');
     setInfoMessage('');
     if (typeof window !== 'undefined' && parseAuthRouteFromLocation() === 'AUTH') {
-      const target = `/auth?mode=${nextMode === 'SIGN_UP' ? 'signup' : 'signin'}`;
+      const target = `/?authMode=${nextMode === 'SIGN_UP' ? 'signup' : 'signin'}`;
       window.history.replaceState({}, '', target);
     }
   };
@@ -308,7 +311,8 @@ const AuthGate = ({ children }: AuthGateProps) => {
     if (!session || typeof window === 'undefined') return;
 
     const path = window.location.pathname.toLowerCase();
-    if (path === '/auth' || path === '/login' || path === '/signup') {
+    const params = new URLSearchParams(window.location.search);
+    if (path === '/auth' || path === '/login' || path === '/signup' || params.has('authMode')) {
       window.history.replaceState({}, '', '/');
     }
   }, [session]);
@@ -324,7 +328,7 @@ const AuthGate = ({ children }: AuthGateProps) => {
       return;
     }
 
-    const desired = `/auth?mode=${mode === 'SIGN_UP' ? 'signup' : 'signin'}`;
+    const desired = `/?authMode=${mode === 'SIGN_UP' ? 'signup' : 'signin'}`;
     const current = `${window.location.pathname}${window.location.search}`;
     if (current !== desired) {
       window.history.replaceState({}, '', desired);

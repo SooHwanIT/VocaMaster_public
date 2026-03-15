@@ -163,6 +163,20 @@ export const subscribeToSyncStatus = (listener: (status: SyncStatusSnapshot) => 
 };
 
 const normalizeSyncErrorMessage = (error: unknown): string => {
+  if (error && typeof error === 'object') {
+    const message = 'message' in error && typeof error.message === 'string' ? error.message.toLowerCase() : '';
+    const code = 'code' in error && typeof error.code === 'string' ? error.code.toLowerCase() : '';
+    const status = 'status' in error && typeof error.status === 'number' ? error.status : null;
+
+    if (status === 401 || message.includes('jwt') || message.includes('unauthorized') || code === '401') {
+      return '로그인 세션이 유효하지 않아 동기화를 진행할 수 없습니다. 다시 로그인해 주세요.';
+    }
+
+    if (status === 403 || code === '42501' || message.includes('permission denied') || message.includes('forbidden')) {
+      return '서버 권한 설정 때문에 동기화에 실패했습니다. Supabase RLS/권한 설정을 확인해 주세요.';
+    }
+  }
+
   if (error instanceof Error) {
     const message = error.message.toLowerCase();
     if (message.includes('failed to fetch') || message.includes('network') || message.includes('offline')) {
@@ -174,6 +188,24 @@ const normalizeSyncErrorMessage = (error: unknown): string => {
     return error.message;
   }
   return '알 수 없는 동기화 오류가 발생했습니다.';
+};
+
+const isPermanentSyncError = (error: unknown): boolean => {
+  if (!error || typeof error !== 'object') return false;
+
+  const message = 'message' in error && typeof error.message === 'string' ? error.message.toLowerCase() : '';
+  const code = 'code' in error && typeof error.code === 'string' ? error.code.toLowerCase() : '';
+  const status = 'status' in error && typeof error.status === 'number' ? error.status : null;
+
+  return (
+    status === 401 ||
+    status === 403 ||
+    code === '42501' ||
+    message.includes('permission denied') ||
+    message.includes('forbidden') ||
+    message.includes('jwt') ||
+    message.includes('unauthorized')
+  );
 };
 
 const refreshSyncStatus = async (phaseOverride?: SyncPhase, overrides?: Partial<SyncStatusSnapshot>) => {
@@ -516,21 +548,27 @@ export const flushSyncQueue = async (force = false) => {
   } catch (error) {
     const message = normalizeSyncErrorMessage(error);
     const failedAt = Date.now();
+    const isPermanentError = isPermanentSyncError(error);
 
     const queue = await db.syncQueue.orderBy('updatedAt').toArray();
     const impactedItems = queue.filter((item) => item.status === 'syncing' || force || !item.nextRetryAt || item.nextRetryAt <= failedAt);
     const nextRetryAt = impactedItems.reduce<number | null>((latest, item) => {
       const retryCount = (item.retryCount ?? 0) + 1;
-      const delay = Math.min(MAX_SYNC_RETRY_DELAY_MS, FLUSH_DEBOUNCE_MS * (2 ** retryCount));
-      const retryAt = failedAt + delay;
       if (item.id) {
         void db.syncQueue.update(item.id, {
           status: 'failed',
           retryCount,
           lastError: message,
-          nextRetryAt: retryAt,
+          nextRetryAt: isPermanentError ? undefined : failedAt + Math.min(MAX_SYNC_RETRY_DELAY_MS, FLUSH_DEBOUNCE_MS * (2 ** retryCount)),
         });
       }
+
+      if (isPermanentError) {
+        return latest;
+      }
+
+      const delay = Math.min(MAX_SYNC_RETRY_DELAY_MS, FLUSH_DEBOUNCE_MS * (2 ** retryCount));
+      const retryAt = failedAt + delay;
       if (latest === null) return retryAt;
       return Math.min(latest, retryAt);
     }, null);

@@ -1,3 +1,12 @@
+﻿-- DANGER: This script resets the public schema and deletes all app data.
+-- Run only when you want a clean start.
+
+begin;
+drop schema if exists public cascade;
+create schema public;
+grant usage on schema public to anon, authenticated, service_role;
+grant all on schema public to postgres, service_role;
+commit;
 create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   nickname text,
@@ -346,3 +355,4 @@ grant usage, select on all sequences in schema public to authenticated;
 
 alter default privileges in schema public grant usage, select on sequences to authenticated;
 alter default privileges in schema public grant select, insert, update, delete on tables to authenticated;
+

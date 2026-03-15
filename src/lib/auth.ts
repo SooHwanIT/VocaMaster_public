@@ -86,15 +86,24 @@ export const signUp = async (email: string, password: string) => {
   try {
     const validatedEmail = validateEmail(email);
     const validatedPassword = validatePassword(password);
+    const emailRedirectTo = typeof window !== 'undefined'
+      ? `${window.location.origin}/?authMode=signin`
+      : undefined;
 
     const { data, error } = await supabase.auth.signUp({
       email: validatedEmail,
       password: validatedPassword,
+      options: {
+        emailRedirectTo,
+      },
     });
     if (error) throw error;
     return data.user;
   } catch (error) {
     const message = error instanceof Error ? error.message : undefined;
+    if (import.meta.env.DEV) {
+      console.debug('[Auth] signUp failed:', message ?? error);
+    }
     throw new Error(mapAuthErrorMessage('SIGN_UP', message));
   }
 };
