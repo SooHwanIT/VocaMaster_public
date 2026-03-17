@@ -37,6 +37,8 @@ export type SessionStats = {
     totalWordCount: number;
     wrongAttempts: number;
     wrongWords?: string[]; // 상세 오답 기록 (wordId 목록)
+    completedAll?: boolean;
+    studiedCount?: number;
     testType?: TestDirection;
     testResults?: TestResultEntry[];
     sessionWords?: SessionWordSnapshot[];
@@ -79,6 +81,7 @@ export type AppAction =
     | { type: 'SET_MODE'; mode: AppMode }
     | { type: 'SELECT_DAY'; dayId: string }
     | { type: 'START_DAY_MODE'; dayId: string; mode: AppMode }
+    | { type: 'RESTORE_RESULT'; dayId: string; mode: AppMode; stats: SessionStats }
     | { type: 'BACK_DASHBOARD' }
     | { type: 'QUIZ_FINISH'; stats: SessionStats }
     | { type: 'RETRY_QUIZ' }

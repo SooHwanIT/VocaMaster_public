@@ -20,6 +20,7 @@ type ProfileData = {
 };
 
 type CachedProfile = {
+    userId: string;
     data: ProfileData;
     editBio: string;
     updatedAt: number;
@@ -116,6 +117,7 @@ const ProfileView = ({ theme, onThemeChange }: { theme: AppTheme; onThemeChange:
             setEditBio(profile?.bio ?? '');
 
             safeWriteJson(PROFILE_CACHE_KEY, {
+                userId: user.id,
                 data: nextProfileData,
                 editBio: profile?.bio ?? '',
                 updatedAt: Date.now(),
@@ -161,28 +163,51 @@ const ProfileView = ({ theme, onThemeChange }: { theme: AppTheme; onThemeChange:
     }, []);
 
     useEffect(() => {
-        const cachedProfile = safeReadJson<CachedProfile>(PROFILE_CACHE_KEY);
-        const cachedStats = safeReadJson<CachedStats>(PROFILE_STATS_CACHE_KEY);
+        let cancelled = false;
 
-        if (cachedProfile?.data) {
-            setProfileData(cachedProfile.data);
-            setEditNickname(cachedProfile.data.nickname);
-            setEditBio(cachedProfile.editBio ?? '');
-            setLoading(false);
-            void loadProfile({ silent: true });
-        } else {
-            void loadProfile();
-        }
+        const initialize = async () => {
+            const cachedProfile = safeReadJson<CachedProfile>(PROFILE_CACHE_KEY);
+            const cachedStats = safeReadJson<CachedStats>(PROFILE_STATS_CACHE_KEY);
 
-        if (cachedStats) {
-            setBookmarkCount(cachedStats.bookmarkCount);
-            setReviewCount(cachedStats.reviewCount);
-            setMasteredCount(cachedStats.masteredCount);
-            setStatsLoading(false);
-            void loadStats({ silent: true });
-        } else {
-            void loadStats();
-        }
+            let currentUserId: string | null = null;
+            try {
+                const user = await getCurrentUser();
+                currentUserId = user.id;
+            } catch {
+                currentUserId = null;
+            }
+            if (cancelled) return;
+
+            const canUseProfileCache = Boolean(
+                cachedProfile?.data && cachedProfile.userId && cachedProfile.userId === currentUserId,
+            );
+
+            if (canUseProfileCache && cachedProfile?.data) {
+                setProfileData(cachedProfile.data);
+                setEditNickname(cachedProfile.data.nickname);
+                setEditBio(cachedProfile.editBio ?? '');
+                setLoading(false);
+                void loadProfile({ silent: true });
+            } else {
+                void loadProfile();
+            }
+
+            if (cachedStats) {
+                setBookmarkCount(cachedStats.bookmarkCount);
+                setReviewCount(cachedStats.reviewCount);
+                setMasteredCount(cachedStats.masteredCount);
+                setStatsLoading(false);
+                void loadStats({ silent: true });
+            } else {
+                void loadStats();
+            }
+        };
+
+        void initialize();
+
+        return () => {
+            cancelled = true;
+        };
     }, [loadProfile, loadStats]);
 
     const handleProfileEdit = () => {
@@ -203,6 +228,7 @@ const ProfileView = ({ theme, onThemeChange }: { theme: AppTheme; onThemeChange:
 
         try {
             await upsertProfile(nickname, editBio.trim());
+            const user = await getCurrentUser();
             const nextData = {
                 ...profileData,
                 nickname,
@@ -211,6 +237,7 @@ const ProfileView = ({ theme, onThemeChange }: { theme: AppTheme; onThemeChange:
 
             setProfileData(nextData);
             safeWriteJson(PROFILE_CACHE_KEY, {
+                userId: user.id,
                 data: nextData,
                 editBio: editBio.trim(),
                 updatedAt: Date.now(),

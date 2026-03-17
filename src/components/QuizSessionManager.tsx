@@ -38,6 +38,7 @@ const QuizSessionManager = ({
     const [totalWordCount, setTotalWordCount] = useState(0);
     const [newMasteredInSession, setNewMasteredInSession] = useState(0);
     const [allWordsList, setAllWordsList] = useState<string[]>([]);
+    const [wordLabelMap, setWordLabelMap] = useState<Record<string, string>>({});
     const [showExitConfirm, setShowExitConfirm] = useState(false);
     const [micEnabled, setMicEnabled] = useState(false);
     const loadingVisible = useDelayedPending(loading);
@@ -55,6 +56,7 @@ const QuizSessionManager = ({
             const { queue: freshQueue, mastered, totalCount } = await getWordsWithStats(dataSetId, mode);
             const allWords = [...freshQueue, ...mastered];
             setAllWordsList(allWords.map(w => w.word));
+            setWordLabelMap(Object.fromEntries(allWords.map((w) => [w.id, w.word])));
             const map = new Map(allWords.map(w => [w.id, w]));
 
             if (saved && saved.queue.length > 0) {
@@ -85,6 +87,20 @@ const QuizSessionManager = ({
                 [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
             }
 
+            // If all words are already mastered, allow a full review run instead of ending immediately.
+            if (shuffled.length === 0 && mastered.length > 0) {
+                const reviewQueue = mastered.map(w => ({ ...w, sessionStatus: 'pending' as const }));
+                for (let i = reviewQueue.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [reviewQueue[i], reviewQueue[j]] = [reviewQueue[j], reviewQueue[i]];
+                }
+                setQueue(reviewQueue);
+                setMasteredCount(mastered.length);
+                setTotalWordCount(totalCount);
+                setLoading(false);
+                return;
+            }
+
             setQueue(shuffled);
             setMasteredCount(mastered.length);
             setTotalWordCount(totalCount);
@@ -112,8 +128,9 @@ const QuizSessionManager = ({
         let maxWrong = 0;
         let worstWord = '없음';
         let totalWrongs = 0;
-        Object.entries(sessionWrongs).forEach(([word, cnt]) => {
-            if (cnt > maxWrong) { maxWrong = cnt; worstWord = `${word} (${cnt})`; }
+        Object.entries(sessionWrongs).forEach(([wordId, cnt]) => {
+            const label = wordLabelMap[wordId] ?? wordId;
+            if (cnt > maxWrong) { maxWrong = cnt; worstWord = `${label} (${cnt})`; }
             totalWrongs += cnt;
         });
         
@@ -124,7 +141,10 @@ const QuizSessionManager = ({
             startTime: startTimeRef.current,
             endTime: Date.now(),
             totalWordCount: totalWordCount,
-            wrongAttempts: totalWrongs
+            wrongAttempts: totalWrongs,
+            wrongWords: Object.keys(sessionWrongs),
+            completedAll: true,
+            studiedCount: totalWordCount
         });
     };
 
@@ -133,7 +153,7 @@ const QuizSessionManager = ({
 
         setSessionTries(prev => prev + 1);
         if (!isCorrect) {
-            setSessionWrongs(prev => ({ ...prev, [current.word]: (prev[current.word] || 0) + 1 }));
+            setSessionWrongs(prev => ({ ...prev, [current.id]: (prev[current.id] || 0) + 1 }));
         }
 
         const currentScore = current.record ? current.record.memoryScore : 0;
@@ -189,12 +209,10 @@ const QuizSessionManager = ({
     const masterPercent = getPercentage(totalMastered, totalWordCount);
 
     const handleSuspend = () => {
-        // 중단하기 (저장 후 종료)
-        // 1. 현재 상태 저장 (Resume)
+        // Save current session state and exit to main without finalizing the session.
         const snapshot: QuizSessionSnapshot = {
             dataSetId,
             mode,
-            // 큐 상태 저장: 현재 진행중인 단어 포함
             queue: (current ? [current, ...queue] : queue).map(item => ({ id: item.id, sessionStatus: item.sessionStatus })),
             sessionTries,
             sessionWrongs,
@@ -204,31 +222,8 @@ const QuizSessionManager = ({
         };
         saveQuizSession(snapshot);
         saveResumeState({ mode, dayId: dataSetId, savedAt: Date.now() });
-
-        // 2. 학습 기록 저장 (History) - 부분 결과라도 저장
-        let maxWrong = 0;
-        let worstWord = '없음';
-        let totalWrongs = 0;
-        Object.entries(sessionWrongs).forEach(([word, cnt]) => {
-            if (cnt > maxWrong) { maxWrong = cnt; worstWord = `${word} (${cnt})`; }
-            totalWrongs += cnt;
-        });
-
-        // 현재까지의 오답 목록 수집
-        const wrongWordsList = Object.keys(sessionWrongs);
-
-        onFinish({
-            totalTries: sessionTries, 
-            mostWrong: worstWord, 
-            masteredCount: newMasteredInSession,
-            startTime: startTimeRef.current,
-            endTime: Date.now(),
-            totalWordCount: totalWordCount, // 전체 단어 수 (진행률 계산용)
-            wrongAttempts: totalWrongs,
-            wrongWords: wrongWordsList
-        });
-        // onFinish가 Result화면을 보여주므로 onQuit는 호출하지 않음 (ResultView에서 홈으로 이동)
         setShowExitConfirm(false);
+        onQuit();
     };
 
     const handleQuitNow = () => {
@@ -261,8 +256,8 @@ const QuizSessionManager = ({
                     <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-3xl w-full max-w-md p-8 shadow-2xl scale-100 animate-in zoom-in-95 duration-200">
                         <h3 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">학습을 중단할까요?</h3>
                         <p className="text-slate-500 dark:text-zinc-400 mb-8 leading-relaxed">
-                            현재까지의 학습 내용을 저장합니다.<br/>
-                            작성한 오답 노트와 통계가 기록되며,<br/>
+                            현재까지의 진행 상태를 저장하고 종료합니다.<br/>
+                            저장하지 않고 종료를 누르면 기록이 삭제되며,<br/>
                             나중에 이어서 계속할 수 있습니다.
                         </p>
                         <div className="flex flex-col gap-3">
@@ -270,7 +265,7 @@ const QuizSessionManager = ({
                                 onClick={handleSuspend} 
                                 className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-lg shadow-lg hover:shadow-blue-500/20 transition-all hover:-translate-y-0.5"
                             >
-                                중단하고 결과 보기
+                                저장하고 종료
                             </button>
                             <button
                                 onClick={handleQuitNow}

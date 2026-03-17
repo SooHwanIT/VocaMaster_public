@@ -1,7 +1,9 @@
 ﻿import React, { useCallback, useEffect, useState } from 'react';
 import { AlertTriangle, Book, BookOpen, Home, Keyboard, Trophy, X, User as UserIcon, BarChart, Bookmark, Settings, History, Gamepad2, FileCheck, Menu, Play, ChevronRight, NotebookPen, RefreshCw } from 'lucide-react';
 
-import { flushSyncQueue, getSyncStatusSnapshot, saveStudySession, subscribeToSyncStatus, type SyncStatusSnapshot } from './db';
+import { db, flushSyncQueue, getSyncStatusSnapshot, getWrongWordStats, saveStudySession, subscribeToSyncStatus, type SyncStatusSnapshot } from './db';
+import { getCurrentUser, getMyProfile } from './lib/userDb';
+import { WRONG_NOTES_CACHE_KEY } from './components/WrongNotesView';
 import { useUserLevel } from './hooks/useUserLevel';
 import LevelUpModal from './components/LevelUpModal';
 import { STORAGE_KEY } from './app/constants';
@@ -24,12 +26,14 @@ import ChoiceQuizUI from './components/ChoiceQuizUI';
 import WriteQuizUI from './components/WriteQuizUI';
 import TestSessionManager from './components/TestSessionManager';
 import ResultView from './components/ResultView';
+import TestResultView from './components/TestResultView';
 import ArcadeView from './components/ArcadeView';
 import PlayerView from './components/PlayerView';
 import AuthGate from './components/AuthGate';
 import WrongNotesView from './components/WrongNotesView';
 import { TransitionSurface } from './components/TransitionUI';
 import { getTestScorePercent } from './app/utils';
+import { DATA_SETS } from './data';
 
 type TabId = 'DASHBOARD' | 'WORD_STUDY' | 'BOOKMARKS' | 'STATS' | 'ARCADE' | 'HISTORY' | 'WRONG_NOTES' | 'SETTINGS' | 'PROFILE';
 const TAB_IDS: TabId[] = ['DASHBOARD', 'WORD_STUDY', 'BOOKMARKS', 'STATS', 'ARCADE', 'HISTORY', 'WRONG_NOTES', 'SETTINGS', 'PROFILE'];
@@ -44,10 +48,65 @@ const App = () => {
 
     const { levelUpInfo, clearLevelUp } = useUserLevel();
 
-    const [activeTab, setActiveTab] = useState<TabId>('DASHBOARD');
+    const [activeTab, setActiveTab] = useState<TabId>(() => {
+        try {
+            if (sessionStorage.getItem('vm_new_user_goto_profile') === '1') {
+                sessionStorage.removeItem('vm_new_user_goto_profile');
+                return 'PROFILE';
+            }
+        } catch { }
+        return 'DASHBOARD';
+    });
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const [syncStatus, setSyncStatus] = useState<SyncStatusSnapshot>(() => getSyncStatusSnapshot());
     const isApplyingUrlRef = React.useRef(false);
+    const stateRef = React.useRef(state);
+    const isValidDayId = useCallback((dayId: string | null | undefined) => {
+        if (!dayId) return false;
+        return DATA_SETS.some((dataSet) => dataSet.id === dayId);
+    }, []);
+
+    // 앱 시작 시 자주 쓰는 페이지 데이터를 백그라운드에서 미리 캐싱
+    useEffect(() => {
+        const preload = async () => {
+            // 오답 노트 캐시 워밍
+            try {
+                const rows = await getWrongWordStats();
+                localStorage.setItem(WRONG_NOTES_CACHE_KEY, JSON.stringify({ data: rows, updatedAt: Date.now() }));
+            } catch { /* silent */ }
+
+            // 프로필 캐시 워밍
+            try {
+                const [user, profile] = await Promise.all([getCurrentUser(), getMyProfile()]);
+                const nickname = profile?.nickname?.trim() || user.email?.split('@')[0] || 'User';
+                const bio = profile?.bio?.trim() || '아직 소개가 없습니다.';
+                const d = user.created_at ? new Date(user.created_at) : null;
+                const joinedDate = d && !isNaN(d.getTime()) ? d.toLocaleDateString('ko-KR') : '-';
+                localStorage.setItem('vm_profile_cache_v1', JSON.stringify({
+                    userId: user.id,
+                    data: { nickname, email: user.email ?? '-', joinedDate, bio },
+                    editBio: profile?.bio ?? '',
+                    updatedAt: Date.now(),
+                }));
+            } catch { /* silent */ }
+
+            // 프로필 통계 캐시 워밍
+            try {
+                const [bookmarks, records] = await Promise.all([
+                    db.bookmarks.count(),
+                    db.studyRecords.toArray(),
+                ]);
+                const mastered = records.filter((row) => row.memoryScore >= 3).length;
+                localStorage.setItem('vm_profile_stats_cache_v1', JSON.stringify({
+                    bookmarkCount: bookmarks,
+                    reviewCount: records.length,
+                    masteredCount: mastered,
+                    updatedAt: Date.now(),
+                }));
+            } catch { /* silent */ }
+        };
+        void preload();
+    }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
     useEffect(() => {
         setIsMobileMenuOpen(false);
@@ -77,8 +136,13 @@ const App = () => {
 
     useEffect(() => subscribeToSyncStatus(setSyncStatus), []);
 
+    useEffect(() => {
+        stateRef.current = state;
+    }, [state]);
+
     const applyUrlState = useCallback(() => {
         if (typeof window === 'undefined') return;
+        const currentState = stateRef.current;
 
         isApplyingUrlRef.current = true;
         const params = new URLSearchParams(window.location.search);
@@ -89,12 +153,32 @@ const App = () => {
         const dayParam = params.get('day');
         const pickerParam = params.get('picker');
 
-        if ((pageParam === 'learn' || pageParam === 'result') && modeParam && ROUTABLE_MODES.includes(modeParam)) {
-            if (dayParam) {
+        if (pageParam === 'learn' && modeParam && ROUTABLE_MODES.includes(modeParam)) {
+            if (dayParam && isValidDayId(dayParam)) {
                 setActiveTab('WORD_STUDY');
                 setLastWordStudyDayId(dayParam);
                 setModePickerDayId(null);
                 dispatch({ type: 'START_DAY_MODE', dayId: dayParam, mode: modeParam });
+            } else {
+                dispatch({ type: 'BACK_DASHBOARD' });
+                setActiveTab('WORD_STUDY');
+            }
+        } else if (pageParam === 'result' && modeParam && ROUTABLE_MODES.includes(modeParam)) {
+            if (dayParam && isValidDayId(dayParam)) {
+                setActiveTab('WORD_STUDY');
+                setLastWordStudyDayId(dayParam);
+                setModePickerDayId(null);
+
+                const canRestoreResult = currentState.view === 'RESULT'
+                    && currentState.dayId === dayParam
+                    && currentState.mode === modeParam
+                    && Boolean(currentState.lastStats);
+
+                if (canRestoreResult && currentState.lastStats) {
+                    dispatch({ type: 'RESTORE_RESULT', dayId: dayParam, mode: modeParam, stats: currentState.lastStats });
+                } else {
+                    dispatch({ type: 'BACK_DASHBOARD' });
+                }
             } else {
                 dispatch({ type: 'BACK_DASHBOARD' });
                 setActiveTab('WORD_STUDY');
@@ -107,7 +191,7 @@ const App = () => {
             dispatch({ type: 'BACK_DASHBOARD' });
             setActiveTab(resolvedTab);
 
-            if (resolvedTab === 'WORD_STUDY' && pickerParam) {
+            if (resolvedTab === 'WORD_STUDY' && pickerParam && isValidDayId(pickerParam)) {
                 setModePickerDayId(pickerParam);
                 setLastWordStudyDayId(pickerParam);
             } else {
@@ -118,7 +202,7 @@ const App = () => {
         window.setTimeout(() => {
             isApplyingUrlRef.current = false;
         }, 0);
-    }, [dispatch]);
+    }, [dispatch, isValidDayId]);
 
     useEffect(() => {
         applyUrlState();
@@ -176,10 +260,19 @@ const App = () => {
     const handleResume = () => {
         if (!resumeState) return;
         if (resumeState.mode === 'TODAY') {
-            dispatch({ type: 'SET_MODE', mode: 'TODAY' });
+            clearResumeState();
+            setResumeState(null);
+            dispatch({ type: 'BACK_DASHBOARD' });
+            setActiveTab('WORD_STUDY');
             return;
         }
-        if (!resumeState.dayId) return;
+        if (!resumeState.dayId || !isValidDayId(resumeState.dayId)) {
+            clearResumeState();
+            setResumeState(null);
+            dispatch({ type: 'BACK_DASHBOARD' });
+            setActiveTab('WORD_STUDY');
+            return;
+        }
         setActiveTab('WORD_STUDY');
         setLastWordStudyDayId(resumeState.dayId);
         dispatch({ type: 'START_DAY_MODE', dayId: resumeState.dayId, mode: resumeState.mode });
@@ -272,6 +365,16 @@ const App = () => {
     const handleRetryQuiz = () => {
         dispatch({ type: 'RETRY_QUIZ' });
     };
+
+    const resultWords = React.useMemo(() => {
+        if (state.lastStats?.sessionWords?.length) {
+            return state.lastStats.sessionWords;
+        }
+        if (!state.dayId) {
+            return [];
+        }
+        return DATA_SETS.find((dataSet) => dataSet.id === state.dayId)?.words ?? [];
+    }, [state.dayId, state.lastStats]);
 
     const navItems = [
         { id: 'DASHBOARD', icon: Home, label: '대시보드', color: 'text-accent' },
@@ -370,7 +473,7 @@ const App = () => {
                         }`}
                     >
                                       <div className="h-16 flex items-center px-6 gap-3 font-bold text-xl tracking-tighter text-text-primary dark:text-white">
-                                          <Trophy className="text-accent shrink-0" /> <span>Etyvoca</span>
+                                          <img src="/app-icon.png" alt="Etyvoca" className="w-7 h-7 shrink-0 rounded-lg" /> <span>Etyvoca</span>
                             </div>
                             {renderNav(true)}
                     </div>
@@ -395,7 +498,7 @@ const App = () => {
                     }`}
                 >
                     <div className="h-16 flex items-center px-6 gap-3 font-bold text-xl tracking-tighter text-text-primary dark:text-white shrink-0">
-                        <Trophy className="text-accent shrink-0" /> <span>Etyvoca</span>
+                        <img src="/app-icon.png" alt="Etyvoca" className="w-7 h-7 shrink-0 rounded-lg" /> <span>Etyvoca</span>
                     </div>
                     {renderNav()}
                     
@@ -456,13 +559,13 @@ const App = () => {
                             </>
                         ) : (
                              <div className="absolute inset-0 z-20 bg-white dark:bg-[#09090b]">
-                                {state.mode === 'WORD_LIST' && state.dayId && (
+                                {state.view !== 'RESULT' && state.mode === 'WORD_LIST' && state.dayId && (
                                     <WordListView
                                         dataSetId={state.dayId}
                                         onExit={requestExit}
                                     />
                                 )}
-                                {state.mode === 'CHOICE' && state.dayId && (
+                                {state.view !== 'RESULT' && state.mode === 'CHOICE' && state.dayId && (
                                     <QuizSessionManager
                                         dataSetId={state.dayId}
                                         mode="CHOICE"
@@ -471,7 +574,7 @@ const App = () => {
                                         renderQuizUI={(props) => <ChoiceQuizUI {...props} />}
                                     />
                                 )}
-                                {state.mode === 'WRITE' && state.dayId && (
+                                {state.view !== 'RESULT' && state.mode === 'WRITE' && state.dayId && (
                                     <QuizSessionManager
                                         dataSetId={state.dayId}
                                         mode="WRITE"
@@ -480,31 +583,43 @@ const App = () => {
                                         renderQuizUI={(props) => <WriteQuizUI {...props} />}
                                     />
                                 )}
-                                {state.mode === 'TEST' && state.dayId && (
+                                {state.view !== 'RESULT' && state.mode === 'TEST' && state.dayId && (
                                     <TestSessionManager
                                         dataSetId={state.dayId}
                                         onFinish={handleQuizFinish}
                                         onQuit={requestExit}
                                     />
                                 )}
-                                 {state.mode === 'PROGRESS' && state.dayId && (
+                                 {state.view !== 'RESULT' && state.mode === 'PROGRESS' && state.dayId && (
                                     <ProgressView dataSetId={state.dayId} onExit={requestExit} />
                                 )}
 
-                                {state.mode === 'PLAYER' && state.dayId && (
+                                {state.view !== 'RESULT' && state.mode === 'PLAYER' && state.dayId && (
                                     <PlayerView dataSetId={state.dayId} onExit={requestExit} />
                                 )}
 
-                                {state.mode === 'TODAY' && (
+                                {state.view !== 'RESULT' && state.mode === 'TODAY' && (
                                     <TodayStudyView onExit={requestExit} />
                                 )}
 
                                 {state.view === 'RESULT' && state.lastStats && (
-                                    <ResultView
-                                        stats={state.lastStats}
-                                        onRetry={handleRetryQuiz}
-                                        onDashboard={handleDashboard}
-                                    />
+                                    state.mode === 'TEST' ? (
+                                        <TestResultView
+                                            stats={state.lastStats}
+                                            results={state.lastStats.testResults ?? (state.lastStats.wrongWords ?? []).map((wordId) => ({ wordId, isCorrect: false }))}
+                                            words={resultWords}
+                                            testType={state.lastStats.testType ?? 'EN_TO_KR'}
+                                            onRetry={handleRetryQuiz}
+                                            onDashboard={handleDashboard}
+                                        />
+                                    ) : (
+                                        <ResultView
+                                            stats={state.lastStats}
+                                            words={resultWords}
+                                            onRetry={handleRetryQuiz}
+                                            onDashboard={handleDashboard}
+                                        />
+                                    )
                                 )}
                             </div>
                         )}

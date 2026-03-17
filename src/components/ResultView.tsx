@@ -20,6 +20,10 @@ const ResultView = ({
         () => (stats.wrongWords || []).map((id) => wordById.get(id)).filter(Boolean) as Word[],
         [stats.wrongWords, wordById]
     );
+    const completedCount = stats.studiedCount ?? stats.totalWordCount;
+    const accuracy = stats.totalTries > 0
+        ? Math.round(((stats.totalTries - stats.wrongAttempts) / stats.totalTries) * 100)
+        : 0;
 
     const hasWrongWords = wrongWordList.length > 0;
 
@@ -27,7 +31,14 @@ const ResultView = ({
         <div className="vm-page items-center animate-fade-in">
             <div className="text-center max-w-2xl w-full my-auto">
                 <p className="text-[#1db954] font-bold tracking-widest uppercase mb-4 text-sm">학습 완료</p>
-                <h1 className="text-5xl md:text-7xl font-extrabold text-zinc-900 dark:text-white mb-6 tracking-tighter">오늘의 목표</h1>
+                <h1 className="text-5xl md:text-7xl font-extrabold text-zinc-900 dark:text-white mb-6 tracking-tighter">학습 요약</h1>
+
+                {stats.completedAll && (
+                    <div className="vm-card-soft p-4 rounded-xl mb-6 text-left">
+                        <div className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">오늘 학습 완료</div>
+                        <div className="text-lg font-bold text-zinc-900 dark:text-white">{completedCount}개 중 {stats.totalWordCount}개 학습</div>
+                    </div>
+                )}
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
                     <div className="vm-card p-6 rounded-xl">
@@ -39,8 +50,8 @@ const ResultView = ({
                         <div className="text-3xl font-bold text-[#1db954]">+{stats.masteredCount}</div>
                     </div>
                     <div className="vm-card p-6 rounded-xl">
-                        <div className="text-zinc-500 dark:text-zinc-400 text-xs font-bold uppercase mb-2">보완 필요</div>
-                        <div className="text-xl font-bold text-red-500 dark:text-red-400 truncate">{stats.mostWrong || '-'}</div>
+                        <div className="text-zinc-500 dark:text-zinc-400 text-xs font-bold uppercase mb-2">정답률</div>
+                        <div className="text-3xl font-bold text-zinc-900 dark:text-white">{accuracy}%</div>
                     </div>
                 </div>
 
@@ -72,10 +83,10 @@ const ResultView = ({
 
                 <div className="flex justify-center items-center gap-6">
                     <button onClick={onRetry} className="vm-btn-primary px-8 rounded-full text-sm tracking-wide flex items-center gap-2">
-                        <RotateCcw size={16} /> 계속하기
+                        <RotateCcw size={16} /> 다시 학습하기
                     </button>
                     <button onClick={onDashboard} className="vm-btn-secondary px-8 rounded-full text-sm tracking-wide flex items-center gap-2">
-                        <Library size={16} /> 대시보드
+                        <Library size={16} /> 메인으로
                     </button>
                 </div>
             </div>

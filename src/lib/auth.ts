@@ -87,7 +87,7 @@ export const signUp = async (email: string, password: string) => {
     const validatedEmail = validateEmail(email);
     const validatedPassword = validatePassword(password);
     const emailRedirectTo = typeof window !== 'undefined'
-      ? `${window.location.origin}/?authMode=signin`
+      ? `${window.location.origin}/?setup=profile`
       : undefined;
 
     const { data, error } = await supabase.auth.signUp({

@@ -66,7 +66,10 @@ const AuthGate = ({ children }: AuthGateProps) => {
   const [errorMessage, setErrorMessage] = useState('');
   const [infoMessage, setInfoMessage] = useState('');
   const [authRoute, setAuthRoute] = useState<AuthRoute>(() => parseAuthRouteFromLocation());
-  const [requiresProfileSetup, setRequiresProfileSetup] = useState(false);
+  const [requiresProfileSetup, setRequiresProfileSetup] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return new URLSearchParams(window.location.search).get('setup') === 'profile';
+  });
   const [profileSetupLoading, setProfileSetupLoading] = useState(false);
   const [profileSetupNickname, setProfileSetupNickname] = useState('');
   const [profileSetupBio, setProfileSetupBio] = useState('');
@@ -86,8 +89,16 @@ const AuthGate = ({ children }: AuthGateProps) => {
         if (mounted) setLoading(false);
       });
 
-    const { data } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    const { data } = supabase.auth.onAuthStateChange((event, nextSession) => {
       setSession(nextSession);
+      // 이메일 인증 링크 클릭으로 SIGNED_IN된 경우 프로필 설정 화면으로
+      if (event === 'SIGNED_IN' && typeof window !== 'undefined') {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('setup') === 'profile') {
+          setRequiresProfileSetup(true);
+          window.history.replaceState({}, '', '/');
+        }
+      }
     });
 
     return () => {
@@ -241,6 +252,7 @@ const AuthGate = ({ children }: AuthGateProps) => {
     setProfileSetupLoading(true);
     try {
       await upsertProfile(nickname, profileSetupBio.trim());
+      try { sessionStorage.setItem('vm_new_user_goto_profile', '1'); } catch { }
       setRequiresProfileSetup(false);
     } catch (error) {
       const message = error instanceof Error ? error.message : '프로필 저장 중 오류가 발생했습니다.';
@@ -350,32 +362,43 @@ const AuthGate = ({ children }: AuthGateProps) => {
     }
 
     return (
-      <div className="min-h-screen w-screen bg-[#05070b] text-white relative overflow-hidden">
+      <div className="min-h-screen w-screen bg-slate-50 text-slate-900 relative overflow-hidden">
         <div className="pointer-events-none absolute inset-0">
-          <div className="absolute left-1/2 top-[-220px] h-[520px] w-[520px] -translate-x-1/2 rounded-full bg-white/10 blur-[130px]" />
-          <div className="absolute right-[-140px] bottom-[-180px] h-[380px] w-[380px] rounded-full bg-blue-400/20 blur-[140px]" />
+          <div className="absolute inset-0" style={{
+            backgroundImage: 'radial-gradient(circle, rgba(15,23,42,0.06) 1px, transparent 1px)',
+            backgroundSize: '38px 38px',
+            opacity: 0.25,
+          }} />
+          <div className="absolute -left-[280px] top-[12%] h-[72vh] w-[560px]" style={{
+            background: 'radial-gradient(closest-side, rgba(139,92,246,0.10) 0%, rgba(139,92,246,0.03) 36%, rgba(139,92,246,0) 78%)',
+            filter: 'blur(32px)',
+          }} />
+          <div className="absolute -right-[280px] top-[18%] h-[68vh] w-[560px]" style={{
+            background: 'radial-gradient(closest-side, rgba(56,189,248,0.10) 0%, rgba(56,189,248,0.03) 36%, rgba(56,189,248,0) 78%)',
+            filter: 'blur(32px)',
+          }} />
         </div>
 
         <div className="relative z-10 min-h-screen flex items-center justify-center p-4 sm:p-6">
-          <div className="w-full max-w-5xl grid lg:grid-cols-2 border border-white/15 rounded-3xl overflow-hidden bg-white/[0.03] backdrop-blur-xl shadow-[0_24px_80px_rgba(0,0,0,0.45)]">
-            <section className="hidden lg:flex flex-col justify-between p-10 border-r border-white/10 bg-black/25">
+          <div className="w-full max-w-5xl grid lg:grid-cols-2 rounded-3xl overflow-hidden bg-white/85 backdrop-blur-md shadow-[0_24px_80px_rgba(15,23,42,0.16)]">
+            <section className="hidden lg:flex flex-col justify-between p-10 bg-slate-900 text-white">
               <div>
-                <div className="inline-flex items-center gap-2 h-8 px-3 rounded-full bg-white/10 text-white/80 text-xs font-semibold mb-6 border border-white/15">
+                <div className="inline-flex items-center gap-2 h-8 px-3 rounded-full bg-white/10 text-white/85 text-xs font-semibold mb-6">
                   <BookOpen size={14} />
                   SECURE ACCOUNT
                 </div>
 
-                <h2 className="text-3xl font-semibold leading-tight mb-3">
+                <h2 className="text-3xl font-semibold leading-tight mb-3 text-white">
                   학습 데이터를
                   <br />
                   안전하게 이어가세요
                 </h2>
-                <p className="text-sm text-white/65 leading-relaxed">
+                <p className="text-sm text-white/75 leading-relaxed">
                   로그인하면 북마크, 진도, 학습 기록을 계속 이어서 볼 수 있습니다.
                 </p>
               </div>
 
-              <div className="space-y-2 text-sm text-white/70">
+              <div className="space-y-2 text-sm text-white/75">
                 <p>• 어디서든 이어서 학습</p>
                 <p>• 나만의 학습 흐름 유지</p>
                 <p>• 매일의 성장을 꾸준히 기록</p>
@@ -385,15 +408,15 @@ const AuthGate = ({ children }: AuthGateProps) => {
             <section className="p-5 sm:p-7 md:p-8 lg:p-10">
               <button
                 onClick={goToLanding}
-                className="inline-flex items-center gap-1 text-xs font-semibold text-white/60 hover:text-white mb-5"
+                className="inline-flex items-center gap-1 text-xs font-semibold text-slate-500 hover:text-slate-900 mb-5"
               >
                 <ArrowLeft size={14} />
                 랜딩으로 돌아가기
               </button>
 
-              <div className="lg:hidden mb-5 p-4 rounded-xl border border-white/10 bg-white/[0.03]">
-                <p className="text-sm font-semibold text-white mb-1">Etyvoca 계정</p>
-                <p className="text-xs text-white/65 leading-relaxed">
+              <div className="lg:hidden mb-5 p-4 rounded-xl bg-slate-100">
+                <p className="text-sm font-semibold text-slate-900 mb-1">Etyvoca 계정</p>
+                <p className="text-xs text-slate-600 leading-relaxed">
                   로그인하면 다음 접속에서도 바로 이어서 학습할 수 있습니다.
                 </p>
               </div>
@@ -401,18 +424,18 @@ const AuthGate = ({ children }: AuthGateProps) => {
               {authStage === 'VERIFY_WAIT' ? (
                 <div>
                   <h1 className="text-2xl font-semibold mb-1">이메일 인증을 기다리는 중</h1>
-                  <p className="text-sm text-white/65 mb-5 leading-relaxed">
+                  <p className="text-sm text-slate-600 mb-5 leading-relaxed">
                     {pendingSignupEmail || email} 주소로 인증 메일을 보냈습니다. 메일에서 인증을 완료한 뒤 계속 진행해 주세요.
                   </p>
 
                   {errorMessage && (
-                    <div className="flex items-start gap-2 text-sm text-red-300 bg-red-500/10 border border-red-500/30 rounded-xl px-3 py-2 mb-3">
+                    <div className="flex items-start gap-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded-xl px-3 py-2 mb-3">
                       <AlertCircle size={16} className="mt-0.5 shrink-0" />
                       <span>{errorMessage}</span>
                     </div>
                   )}
                   {infoMessage && (
-                    <p className="text-sm text-emerald-200 bg-emerald-500/10 border border-emerald-500/30 rounded-xl px-3 py-2 mb-3">
+                    <p className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2 mb-3">
                       {infoMessage}
                     </p>
                   )}
@@ -421,7 +444,7 @@ const AuthGate = ({ children }: AuthGateProps) => {
                     <button
                       onClick={handleVerificationContinue}
                       disabled={submitting}
-                      className="w-full h-11 rounded-xl bg-white text-black font-semibold disabled:opacity-60 flex items-center justify-center gap-2"
+                      className="w-full h-11 rounded-xl bg-violet-600 text-white font-semibold disabled:opacity-60 flex items-center justify-center gap-2 hover:bg-violet-500"
                     >
                       {submitting && <Loader2 size={16} className="animate-spin" />}
                       {submitting ? '확인 중...' : '인증 완료 후 계속'}
@@ -432,7 +455,7 @@ const AuthGate = ({ children }: AuthGateProps) => {
                         setMode('SIGN_IN');
                         setInfoMessage('로그인으로 전환했습니다. 인증 완료 후 로그인해 주세요.');
                       }}
-                      className="w-full h-11 rounded-xl border border-white/20 text-white/85 font-semibold hover:bg-white/10"
+                      className="w-full h-11 rounded-xl bg-slate-100 text-slate-700 font-semibold hover:bg-slate-200"
                     >
                       로그인 화면으로 이동
                     </button>
@@ -441,19 +464,19 @@ const AuthGate = ({ children }: AuthGateProps) => {
               ) : (
                 <>
                   <h1 className="text-2xl font-semibold mb-1">{mode === 'SIGN_IN' ? '로그인' : '회원가입'}</h1>
-                  <p className="text-sm text-white/65 mb-5 leading-relaxed">
+                  <p className="text-sm text-slate-600 mb-5 leading-relaxed">
                     {mode === 'SIGN_IN'
                       ? '계정으로 접속해 학습을 이어서 진행하세요.'
                       : '새 계정을 만들고 학습 데이터를 저장하세요.'}
                   </p>
 
-                  <div className="flex mb-5 gap-2 p-1 bg-white/5 rounded-xl border border-white/10">
+                  <div className="flex mb-5 gap-2 p-1 bg-slate-100 rounded-xl">
                     <button
                       onClick={() => changeAuthMode('SIGN_IN')}
                       className={`flex-1 h-10 rounded-lg text-sm font-semibold transition-colors ${
                         mode === 'SIGN_IN'
-                          ? 'bg-white text-black'
-                          : 'text-white/70 hover:text-white hover:bg-white/10'
+                          ? 'bg-white text-slate-900 shadow-sm'
+                          : 'text-slate-500 hover:text-slate-900 hover:bg-white/70'
                       }`}
                     >
                       로그인
@@ -462,8 +485,8 @@ const AuthGate = ({ children }: AuthGateProps) => {
                       onClick={() => changeAuthMode('SIGN_UP')}
                       className={`flex-1 h-10 rounded-lg text-sm font-semibold transition-colors ${
                         mode === 'SIGN_UP'
-                          ? 'bg-white text-black'
-                          : 'text-white/70 hover:text-white hover:bg-white/10'
+                          ? 'bg-white text-slate-900 shadow-sm'
+                          : 'text-slate-500 hover:text-slate-900 hover:bg-white/70'
                       }`}
                     >
                       회원가입
@@ -472,45 +495,45 @@ const AuthGate = ({ children }: AuthGateProps) => {
 
                   <form onSubmit={handleSubmit} className="space-y-4">
                     <div>
-                      <label className="block text-sm font-semibold text-white/90 mb-1.5">이메일</label>
+                      <label className="block text-sm font-semibold text-slate-700 mb-1.5">이메일</label>
                       <div className="relative">
-                        <Mail size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40" />
+                        <Mail size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                         <input
                           type="email"
                           value={email}
                           onChange={(event) => setEmail(event.target.value)}
                           placeholder="you@example.com"
-                          className="vm-input-dark pl-9 pr-3"
+                          className="vm-input pl-9 pr-3"
                           required
                         />
                       </div>
                     </div>
 
                     <div>
-                      <label className="block text-sm font-semibold text-white/90 mb-1.5">비밀번호</label>
+                      <label className="block text-sm font-semibold text-slate-700 mb-1.5">비밀번호</label>
                       <input
                         type="password"
                         value={password}
                         onChange={(event) => setPassword(event.target.value)}
                         placeholder={mode === 'SIGN_UP' ? '비밀번호 (8자 이상, 영문/숫자 포함)' : '비밀번호'}
-                        className="vm-input-dark"
+                        className="vm-input"
                         minLength={mode === 'SIGN_UP' ? 8 : 1}
                         required
                       />
                       {mode === 'SIGN_UP' && (
-                        <p className="mt-1.5 text-xs text-white/55">8자 이상, 영문과 숫자를 각각 1개 이상 포함해 주세요.</p>
+                        <p className="mt-1.5 text-xs text-slate-500">8자 이상, 영문과 숫자를 각각 1개 이상 포함해 주세요.</p>
                       )}
                     </div>
 
                     {mode === 'SIGN_UP' && (
                       <div>
-                        <label className="block text-sm font-semibold text-white/90 mb-1.5">비밀번호 확인</label>
+                        <label className="block text-sm font-semibold text-slate-700 mb-1.5">비밀번호 확인</label>
                         <input
                           type="password"
                           value={confirmPassword}
                           onChange={(event) => setConfirmPassword(event.target.value)}
                           placeholder="비밀번호를 다시 입력하세요"
-                          className="vm-input-dark"
+                          className="vm-input"
                           minLength={8}
                           required
                         />
@@ -518,13 +541,13 @@ const AuthGate = ({ children }: AuthGateProps) => {
                     )}
 
                     {errorMessage && (
-                      <div className="flex items-start gap-2 text-sm text-red-300 bg-red-500/10 border border-red-500/30 rounded-xl px-3 py-2">
+                      <div className="flex items-start gap-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded-xl px-3 py-2">
                         <AlertCircle size={16} className="mt-0.5 shrink-0" />
                         <span>{errorMessage}</span>
                       </div>
                     )}
                     {infoMessage && (
-                      <p className="text-sm text-emerald-200 bg-emerald-500/10 border border-emerald-500/30 rounded-xl px-3 py-2">
+                      <p className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2">
                         {infoMessage}
                       </p>
                     )}
@@ -532,7 +555,7 @@ const AuthGate = ({ children }: AuthGateProps) => {
                     <button
                       type="submit"
                       disabled={submitting}
-                      className="w-full vm-btn-inverse flex items-center justify-center gap-2"
+                      className="w-full h-11 rounded-xl bg-violet-600 text-white font-semibold flex items-center justify-center gap-2 hover:bg-violet-500 disabled:opacity-60"
                     >
                       {submitting && <Loader2 size={16} className="animate-spin" />}
                       {submitting ? '처리 중...' : submitLabel}
@@ -542,7 +565,7 @@ const AuthGate = ({ children }: AuthGateProps) => {
                   {mode === 'SIGN_IN' && (
                     <button
                       onClick={handlePasswordReset}
-                      className="w-full mt-3 text-xs font-semibold text-white/60 hover:text-white"
+                      className="w-full mt-3 text-xs font-semibold text-slate-500 hover:text-slate-900"
                     >
                       비밀번호를 잊으셨나요?
                     </button>
@@ -559,42 +582,49 @@ const AuthGate = ({ children }: AuthGateProps) => {
 
   if (requiresProfileSetup) {
     return (
-      <div className="min-h-screen w-screen bg-[#05070b] text-white relative overflow-hidden">
+      <div className="min-h-screen w-screen bg-slate-50 text-slate-900 relative overflow-hidden">
         <div className="pointer-events-none absolute inset-0">
-          <div className="absolute left-1/2 top-[-220px] h-[520px] w-[520px] -translate-x-1/2 rounded-full bg-white/10 blur-[130px]" />
-          <div className="absolute right-[-140px] bottom-[-180px] h-[380px] w-[380px] rounded-full bg-blue-400/20 blur-[140px]" />
+          <div className="absolute inset-0" style={{
+            backgroundImage: 'radial-gradient(circle, rgba(15,23,42,0.06) 1px, transparent 1px)',
+            backgroundSize: '38px 38px',
+            opacity: 0.25,
+          }} />
+          <div className="absolute -left-[260px] top-[14%] h-[70vh] w-[520px]" style={{
+            background: 'radial-gradient(closest-side, rgba(139,92,246,0.10) 0%, rgba(139,92,246,0.03) 36%, rgba(139,92,246,0) 78%)',
+            filter: 'blur(30px)',
+          }} />
         </div>
 
         <div className="relative z-10 min-h-screen flex items-center justify-center p-4 sm:p-6">
-          <div className="w-full max-w-md border border-white/15 rounded-3xl bg-white/[0.03] backdrop-blur-xl p-6 sm:p-8 shadow-[0_24px_80px_rgba(0,0,0,0.45)]">
+          <div className="w-full max-w-md rounded-3xl bg-white/88 backdrop-blur-md p-6 sm:p-8 shadow-[0_24px_80px_rgba(15,23,42,0.16)]">
             <h1 className="text-2xl font-semibold mb-1">프로필 설정</h1>
-            <p className="text-sm text-white/65 mb-5">마지막 단계입니다. 이름을 설정하면 바로 학습을 시작할 수 있어요.</p>
+            <p className="text-sm text-slate-600 mb-5">마지막 단계입니다. 이름을 설정하면 바로 학습을 시작할 수 있어요.</p>
 
             <form onSubmit={handleProfileSetupSubmit} className="space-y-4">
               <div>
-                <label className="block text-sm font-semibold text-white/90 mb-1.5">닉네임</label>
+                <label className="block text-sm font-semibold text-slate-700 mb-1.5">닉네임</label>
                 <input
                   type="text"
                   value={profileSetupNickname}
                   onChange={(event) => setProfileSetupNickname(event.target.value)}
                   placeholder="표시할 이름"
-                  className="vm-input-dark"
+                  className="vm-input"
                   required
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-white/90 mb-1.5">한 줄 소개 (선택)</label>
+                <label className="block text-sm font-semibold text-slate-700 mb-1.5">한 줄 소개 (선택)</label>
                 <textarea
                   value={profileSetupBio}
                   onChange={(event) => setProfileSetupBio(event.target.value)}
                   placeholder="예: 매일 20분씩 꾸준히 학습 중"
-                  className="vm-textarea-dark h-24"
+                  className="vm-textarea h-24"
                 />
               </div>
 
               {profileSetupError && (
-                <div className="flex items-start gap-2 text-sm text-red-300 bg-red-500/10 border border-red-500/30 rounded-xl px-3 py-2">
+                <div className="flex items-start gap-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded-xl px-3 py-2">
                   <AlertCircle size={16} className="mt-0.5 shrink-0" />
                   <span>{profileSetupError}</span>
                 </div>
@@ -603,7 +633,7 @@ const AuthGate = ({ children }: AuthGateProps) => {
               <button
                 type="submit"
                 disabled={profileSetupLoading}
-                className="w-full vm-btn-inverse flex items-center justify-center gap-2"
+                className="w-full h-11 rounded-xl bg-violet-600 text-white font-semibold flex items-center justify-center gap-2 hover:bg-violet-500 disabled:opacity-60"
               >
                 {profileSetupLoading && <Loader2 size={16} className="animate-spin" />}
                 {profileSetupLoading ? '저장 중...' : '프로필 저장하고 시작하기'}

@@ -97,6 +97,14 @@ export const appReducer = (state: AppState, action: AppAction): AppState => {
             return normalizeState({ ...state, view: 'RESULT', lastStats: action.stats });
         case 'RETRY_QUIZ':
             return normalizeState({ ...state, view: 'QUIZ' });
+        case 'RESTORE_RESULT':
+            return normalizeState({
+                ...state,
+                view: 'RESULT',
+                dayId: action.dayId,
+                mode: action.mode,
+                lastStats: action.stats
+            });
         case 'CLEAR_DAY':
             return normalizeState({ ...state, dayId: null });
         default:

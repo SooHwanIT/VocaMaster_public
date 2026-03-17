@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { format } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import { AlertCircle, TrendingDown, CheckCircle2, RotateCcw, ChevronDown, ChevronUp } from 'lucide-react';
@@ -10,6 +10,29 @@ import useDelayedPending from '../hooks/useDelayedPending';
 
 type SortKey = 'wrongCount' | 'accuracy' | 'lastAttemptAt';
 
+export const WRONG_NOTES_CACHE_KEY = 'vm_wrong_notes_cache_v1';
+
+type CachedWrongStats = {
+    data: WrongWordStat[];
+    updatedAt: number;
+};
+
+const safeReadJson = <T,>(key: string): T | null => {
+    try {
+        const raw = localStorage.getItem(key);
+        if (!raw) return null;
+        return JSON.parse(raw) as T;
+    } catch {
+        return null;
+    }
+};
+
+const safeWriteJson = (key: string, value: unknown) => {
+    try {
+        localStorage.setItem(key, JSON.stringify(value));
+    } catch { }
+};
+
 const WrongNotesView = () => {
     const [sortKey, setSortKey] = useState<SortKey>('wrongCount');
     const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -17,24 +40,27 @@ const WrongNotesView = () => {
     const [wrongStats, setWrongStats] = useState<WrongWordStat[]>([]);
     const loadingVisible = useDelayedPending(loading);
 
-    useEffect(() => {
-        let cancelled = false;
-
-        const load = async () => {
-            setLoading(true);
+    const fetchAndCache = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
+        if (!silent) setLoading(true);
+        try {
             const rows = await getWrongWordStats();
-            if (!cancelled) {
-                setWrongStats(rows);
-                setLoading(false);
-            }
-        };
-
-        void load();
-
-        return () => {
-            cancelled = true;
-        };
+            setWrongStats(rows);
+            safeWriteJson(WRONG_NOTES_CACHE_KEY, { data: rows, updatedAt: Date.now() } satisfies CachedWrongStats);
+        } catch { /* silent */ } finally {
+            if (!silent) setLoading(false);
+        }
     }, []);
+
+    useEffect(() => {
+        const cached = safeReadJson<CachedWrongStats>(WRONG_NOTES_CACHE_KEY);
+        if (cached?.data) {
+            setWrongStats(cached.data);
+            setLoading(false);
+            void fetchAndCache({ silent: true });
+        } else {
+            void fetchAndCache();
+        }
+    }, [fetchAndCache]);
 
     const stats = useMemo(() => {
         return wrongStats
@@ -67,15 +93,7 @@ const WrongNotesView = () => {
                 <TransitionPlaceholder
                     title="오답 노트를 정리 중이에요"
                     variant="list"
-                    onRetry={() => {
-                        setLoading(true);
-                        void getWrongWordStats().then((rows) => {
-                            setWrongStats(rows);
-                            setLoading(false);
-                        }).catch(() => {
-                            setLoading(false);
-                        });
-                    }}
+                    onRetry={() => void fetchAndCache()}
                 />
             );
         }
